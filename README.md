@@ -1,54 +1,253 @@
-# Enregistreur d'Écran Pro (HD/4K)
+# 🎬 ScreenRecorder Pro - Application d'Enregistrement d'Écran
 
-Cette application Python permet d'enregistrer votre écran avec une qualité professionnelle (HD, 2K, 4K) tout en contrôlant précisément le poids du fichier et le volume audio.
+Application professionnelle d'enregistrement d'écran pour Windows avec système de mise à jour automatique.
 
-## Fonctionnalités Clés
+## ✨ Fonctionnalités Principales
 
-1.  **Qualité Variable** : Support de la HD (720p), Full HD (1080p), 2K (1440p) et 4K (2160p).
-2.  **Compression Intelligente** : Utilisation de l'encodage H.264 via FFmpeg pour un rendu clair mais léger.
-3.  **Contrôle du Bitrate** : Réglez la qualité vidéo (de "Léger" à "Ultra") pour influencer directement la taille du fichier.
-4.  **Gestion Audio** : Curseur de gain pour amplifier ou réduire le volume d'entrée lors du traitement final.
-5.  **Interface Simple** : Démarrage/Arrêt facile avec indication d'état.
+### 📹 Enregistrement Vidéo Haute Qualité
+- **Résolutions supportées**: HD (720p), Full HD (1080p), 2K (1440p), **4K UHD (2160p)**
+- **FPS ajustables**: 24, 30, 60 FPS
+- **Bitrate contrôlable**: De 2500k à 20000k pour optimiser la taille des fichiers
+- **Encodage H.264** via FFmpeg pour une compression optimale
 
-## Prérequis
+### 🔊 Gestion Audio Avancée
+- Enregistrement audio synchronisé
+- **Contrôle du volume/gain** (0.1x à 2.0x)
+- Volume réduit par défaut (0.5x) pour un rendu "conséquemment bas"
+- Format AAC 128kbps pour une qualité audio optimale
 
-Vous devez avoir **Python 3** installé ainsi que **FFmpeg** (indispensable pour le traitement vidéo final).
+### 🔄 Système de Mise à Jour Automatique
+- **Vérification automatique** au démarrage
+- **Notification de nouvelle version** avec changelog
+- **Téléchargement et installation** automatisés
+- Barre de progression en temps réel
+- Option de désactivation dans les paramètres
 
-### 1. Installation de FFmpeg
-*   **Windows** : Téléchargez les builds sur [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), extrayez-le et ajoutez le dossier `bin` à vos variables d'environnement PATH.
-*   **Mac** : `brew install ffmpeg`
-*   **Linux** : `sudo apt install ffmpeg`
+### 💻 Interface Utilisateur Intuitive
+- Design moderne et épuré
+- Chronomètre en temps réel
+- Sélecteurs intelligents avec suggestions
+- Statuts clairs et indicateurs visuels
+- Menu complet (Fichier, Outils, Aide)
 
-### 2. Installation des librairies Python
-Ouvrez un terminal dans le dossier du projet et lancez :
+## 🚀 Installation & Déploiement sur Windows
+
+### Option 1 : Créer un Vrai Installateur (Comme Docker/Telegram) ⭐ RECOMMANDÉ
+
+Cette méthode génère un fichier `Setup.exe` professionnel qui installe l'application dans `C:\Program Files`, crée des raccourcis et apparaît dans "Ajouter/Supprimer des programmes".
+
+**Prérequis :**
+- Python 3.8+ installé
+- [NSIS](https://nsis.sourceforge.io/Download) (outil gratuit pour créer des installateurs Windows)
+
+**Étapes :**
 
 ```bash
-pip install mss numpy opencv-python pyaudio pyautogui
+# 1. Lancer le script de build automatique
+build_installer.bat
 ```
-*(Note: Pour pyaudio sur Windows, il peut être nécessaire d'installer les "Visual C++ Build Tools" si l'installation échoue).*
 
-### 3. (Optionnel) Pour tests sans écran (Linux Headless)
-Si vous testez sur un serveur sans interface graphique :
+**Ce que fait le script :**
+1. Vérifie les prérequis (Python, PyInstaller)
+2. Installe les dépendances Python
+3. Compile l'application en un exécutable unique (`screen_recorder.exe`)
+4. Génère un installateur professionnel (`ScreenRecorderPro_Setup_1.0.0.exe`)
+
+**Résultat final :**
+- Fichier créé : `dist_installer\ScreenRecorderPro_Setup_1.0.0.exe`
+- Double-cliquez dessus pour installer l'application comme n'importe quel logiciel professionnel
+- L'installateur ajoute :
+  - Raccourci sur le Bureau
+  - Entrée dans le Menu Démarrer
+  - Désinstallateur dans "Paramètres > Applications"
+
+---
+
+### Option 2 : Utilisation Rapide (Sans Installateur)
+
+Si vous voulez juste tester rapidement sans créer d'installateur :
+
 ```bash
-sudo apt-get install xvfb xauth
-xvfb-run python screen_recorder.py
+# 1. Installer FFmpeg (nécessaire pour l'encodage vidéo)
+choco install ffmpeg
+# OU télécharger depuis https://www.gyan.dev/ffmpeg/builds/
+
+# 2. Installer les dépendances Python
+pip install -r requirements.txt
+
+# 3. Créer l'exécutable simple
+pyinstaller --onefile --windowed --name "screen_recorder" screen_recorder.py
+
+# 4. Utiliser l'application
+# Le fichier est dans : dist\screen_recorder.exe
+# Copiez-le où vous voulez et double-cliquez dessus
 ```
 
-## Utilisation
+---
 
-1.  Lancez l'application :
-    ```bash
-    python screen_recorder.py
-    ```
-2.  **Configuration** :
-    *   Choisissez la résolution (ex: 3840x2160 pour la 4K).
-    *   Ajustez le bitrate (ex: 20000k pour de la 4K nette, ou moins pour un fichier plus petit).
-    *   Réglez le volume audio si nécessaire.
-3.  Cliquez sur **DÉMARRER L'ENREGISTREMENT**.
-4.  Faites vos actions à l'écran.
-5.  Cliquez sur **ARRÊTER**. L'application va traiter la vidéo (compression) et la sauvegarder dans le dossier choisi (par défaut `~/Videos`).
+## 🔄 Système de Mise à Jour Automatique
 
-## Comment ça marche ?
+L'application intègre un système de mise à jour intelligent similaire aux logiciels professionnels :
 
-*   **Capture** : Utilise `mss` pour capturer l'écran rapidement et `opencv` pour écrire le flux brut.
-*   **Post-Production** : À l'arrêt, le script appelle `FFmpeg` en arrière-plan. C'est cette étape qui convertit la vidéo lourde brute en un fichier MP4 H.264 optimisé et applique le filtre de volume demandé.
+### Comment ça marche ?
+1. **Détection automatique** : Au démarrage, l'application vérifie la version sur votre serveur
+2. **Notification** : Si une nouvelle version existe, une fenêtre pop-up informe l'utilisateur avec les notes de version
+3. **Téléchargement & Installation** : L'utilisateur accepte et la mise à jour se télécharge, puis se lance automatiquement
+
+### Comment publier une mise à jour ?
+
+**Étape 1 :** Modifier la version dans `screen_recorder.py`
+```python
+APP_VERSION = "1.1.0"  # Augmentez le numéro de version
+```
+
+**Étape 2 :** Régénérer l'installateur
+```bash
+build_installer.bat
+```
+
+**Étape 3 :** Héberger le nouvel installateur sur votre serveur/web/cloud
+
+**Étape 4 :** Créer/mettre à jour le fichier `version.json` sur votre serveur :
+
+```json
+{
+  "latest_version": "1.1.0",
+  "download_url": "https://votre-site.com/downloads/ScreenRecorderPro_Setup_1.1.0.exe",
+  "release_notes": "✅ Correction de bugs\n✅ Amélioration qualité 4K\n✅ Nouveau curseur de volume"
+}
+```
+
+**Étape 5 :** Mettre à jour l'URL dans `screen_recorder.py` :
+```python
+UPDATE_SERVER_URL = "https://votre-site.com/version.json"
+```
+
+Désormais, tous les utilisateurs recevront une notification de mise à jour au prochain lancement !
+
+---
+
+## 📖 Utilisation Quotidienne
+
+### Démarrer un Enregistrement
+1. Lancez l'application
+2. Configurez vos paramètres:
+   - **Résolution**: Choisissez HD, Full HD, 2K ou 4K
+   - **FPS**: 24, 30 ou 60 selon vos besoins
+   - **Bitrate**: Plus élevé = meilleure qualité mais fichier plus lourd
+   - **Volume**: Réglez le gain audio (0.5 recommandé pour volume bas)
+3. Cliquez sur **"▶️ Démarrer l'Enregistrement"**
+4. Un chronomètre s'affiche pour suivre la durée
+5. Cliquez sur **"⏹️ Arrêter"** pour terminer
+
+### Gérer les Mises à Jour
+- **Vérification automatique**: Au démarrage, l'application vérifie les nouvelles versions
+- **Notification**: Une fenêtre s'affiche si une mise à jour est disponible
+- **Installation**: Cliquez sur "Télécharger et Installer" pour mettre à jour
+- **Manuel**: Menu → Outils → Vérifier les mises à jour
+
+### Personnalisation
+- **Dossier de sortie**: Cliquez sur "Parcourir..." pour choisir où sauvegarder vos vidéos
+- **Paramètres**: Menu → Outils → Paramètres pour configurer les mises à jour automatiques
+
+## 🔧 Configuration Technique
+
+### Structure du Projet
+```
+screen_recorder/
+├── screen_recorder.py      # Application principale
+├── requirements.txt        # Dépendances Python
+├── README.md              # Ce fichier
+└── config.json            # Configuration utilisateur (généré automatiquement)
+```
+
+### Classes Principales
+- `UpdateManager`: Gestion des mises à jour automatiques
+- `ScreenRecorder`: Capture et encodage vidéo
+- `AudioRecorder`: Capture et traitement audio
+- `ScreenRecorderApp`: Interface graphique utilisateur
+
+## 📁 Fichiers du Projet
+
+| Fichier | Description |
+|---------|-------------|
+| `screen_recorder.py` | Code source principal de l'application |
+| `build_installer.bat` | **Script de build** - Crée l'exécutable et l'installateur |
+| `setup_installer.nsi` | Script NSIS pour générer le Setup.exe professionnel |
+| `requirements.txt` | Liste des dépendances Python |
+| `README.md` | Documentation complète |
+
+## 🛠️ Développement Futur & Évolutions
+
+Pour faire évoluer votre application comme un logiciel professionnel :
+
+### Ajouter une Nouvelle Fonctionnalité
+1. Modifiez `screen_recorder.py`
+2. Incrémentez la version : `APP_VERSION = "1.1.0"`
+3. Testez localement : `python screen_recorder.py`
+4. Générez le nouvel installateur : `build_installer.bat`
+5. Déployez le nouveau `Setup.exe` sur votre serveur
+
+### Workflow de Mise à Jour Typique
+```bash
+# 1. Modifier le code source
+notepad screen_recorder.py
+
+# 2. Changer le numéro de version dans le fichier
+# APP_VERSION = "1.2.0"
+
+# 3. Reconstruire l'installateur
+build_installer.bat
+
+# 4. Tester l'installateur généré
+dist_installer\ScreenRecorderPro_Setup_1.2.0.exe
+
+# 5. Déployer sur votre serveur/cloud
+# Copiez vers votre hébergement web
+```
+
+### Bonnes Pratiques
+- **Versionnement sémantique** : MAJEURE.MINEURE.CORRECTIF (ex: 1.2.3)
+- **Notes de version** : Tenez un journal des changements dans le fichier `version.json`
+- **Tests** : Testez toujours l'installateur sur une machine propre avant déploiement
+- **Backup** : Sauvegardez vos versions stables
+
+---
+
+## ⚠️ Notes Importantes
+
+- **FFmpeg requis** pour l'encodage H.264 haute qualité
+- **PyAudio** peut nécessiter des dépendances système supplémentaires sur Windows
+- Les **permissions microphone** doivent être activées pour l'enregistrement audio
+- L'application utilise **environ 200-500 MB RAM** pendant l'enregistrement
+- **NSIS** est uniquement nécessaire pour créer l'installateur, pas pour utiliser l'application
+
+---
+
+## 🤝 Support & Dépannage
+
+### Problèmes Courants
+
+**"ffmpeg n'est pas reconnu"**
+```powershell
+# Installer FFmpeg via Chocolatey
+choco install ffmpeg
+```
+
+**L'installateur ne se crée pas**
+- Installez NSIS depuis https://nsis.sourceforge.io/Download
+- Relancez `build_installer.bat`
+
+**Erreurs PyAudio**
+```bash
+pip install pipwin
+pipwin install pyaudio
+```
+
+**L'application ne détecte pas les mises à jour**
+- Vérifiez que `UPDATE_SERVER_URL` pointe vers un fichier `version.json` accessible
+- Assurez-vous que le serveur autorise les requêtes CORS
+
+---
+
+**Développé avec ❤️ en Python - Prêt pour un usage professionnel quotidien**
