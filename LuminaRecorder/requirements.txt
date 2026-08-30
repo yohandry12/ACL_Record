@@ -1,0 +1,24 @@
+# Lumina Recorder - Dépendances Python
+# Installation: pip install -r requirements.txt
+
+# Capture d'écran
+mss>=9.0.1
+
+# Traitement vidéo
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Audio
+pyaudio>=0.2.13
+
+# Analyse système
+psutil>=5.9.0
+
+# Comparaison de versions pour les mises à jour
+packaging>=23.0
+
+# Interface moderne (optionnel mais recommandé)
+# customtkinter>=5.2.0
+
+# Outils de build (pour développement)
+# pyinstaller>=6.0.0
