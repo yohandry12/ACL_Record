@@ -17,6 +17,58 @@ from core.system_analyzer import SystemAnalyzer, SystemProfile
 from core.recorder_core import RecorderCore
 from core.encoder import VideoEncoder
 from ui.components import StyledButton, ConfigCard, StatusBadge, ResolutionSelector, VolumeSlider
+from utils.config_manager import ConfigManager
+from filters.privacy_blur_filter import PrivacyBlurFilter
+from filters.clean_canvas_filter import CleanCanvasFilter
+from filters.overlay_filter import OverlayFilter
+from postprocess.subtitles_processor import (SubtitlesProcessor,
+                                             whisper_is_available)
+from postprocess.magic_cut_processor import MagicCutProcessor
+from postprocess.base import run_postprocessors
+
+
+class AIOptions:
+    """Logique des Options IA : persistance .ini et construction des
+    filtres/post-processeurs. Séparée de la UI pour être testable."""
+
+    # (clé_option) -> (section_ini, clé_ini)
+    KEYS = {
+        'privacy_blur': ('privacy', 'dynamic_blur'),
+        'clean_canvas': ('ai', 'clean_canvas'),
+        'overlay': ('system', 'show_overlay'),
+        'subtitles': ('ai', 'auto_subtitles'),
+        'magic_cut': ('ai', 'magic_cut'),
+    }
+
+    @staticmethod
+    def load(config: ConfigManager) -> dict:
+        return {opt: config.get_bool(section, key, fallback=False)
+                for opt, (section, key) in AIOptions.KEYS.items()}
+
+    @staticmethod
+    def save(config: ConfigManager, options: dict) -> None:
+        for opt, (section, key) in AIOptions.KEYS.items():
+            config.set(section, key, options.get(opt, False))
+
+    @staticmethod
+    def build_filters(options: dict) -> list:
+        filters = []
+        if options.get('privacy_blur'):
+            filters.append(PrivacyBlurFilter())
+        if options.get('clean_canvas'):
+            filters.append(CleanCanvasFilter())
+        if options.get('overlay'):
+            filters.append(OverlayFilter())
+        return filters
+
+    @staticmethod
+    def build_postprocessors(options: dict) -> list:
+        procs = []
+        if options.get('subtitles'):
+            procs.append(SubtitlesProcessor())   # sous-titres AVANT Magic Cut
+        if options.get('magic_cut'):
+            procs.append(MagicCutProcessor())
+        return procs
 
 
 class MainWindow:
@@ -34,7 +86,10 @@ class MainWindow:
         # Analyse système au démarrage
         self.analyzer = SystemAnalyzer()
         self.recommended_settings = self.analyzer.get_recommended_settings()
-        
+
+        self.config = ConfigManager()
+        self.ai_options = AIOptions.load(self.config)
+
         # Variables d'état
         self.is_recording = False
         self.recorder = None
@@ -179,7 +234,34 @@ class MainWindow:
         
         self.volume_slider = VolumeSlider(audio_card)
         self.volume_slider.pack(pady=10)
-        
+
+        # Carte 4: Options IA
+        ai_card = ConfigCard(config_container, text="🤖 Options IA")
+        ai_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
+
+        self.ai_vars = {}
+        labels = [
+            ('privacy_blur', "Flou confidentialité"),
+            ('clean_canvas', "Masquer notifications"),
+            ('overlay', "Overlay métriques"),
+            ('subtitles', "Sous-titres auto"),
+            ('magic_cut', "Couper les silences"),
+        ]
+        for key, label in labels:
+            var = tk.BooleanVar(value=self.ai_options.get(key, False))
+            cb = tk.Checkbutton(ai_card, text=label, variable=var,
+                                bg=self.colors['bg_secondary'],
+                                fg=self.colors['text_primary'],
+                                anchor='w',
+                                command=self._on_ai_option_changed)
+            state = tk.NORMAL
+            if key == 'subtitles' and not whisper_is_available():
+                state = tk.DISABLED
+                cb.config(text=label + " (installer faster-whisper)")
+            cb.config(state=state)
+            cb.pack(fill=tk.X, padx=5)
+            self.ai_vars[key] = var
+
         # === FOOTER ===
         footer_frame = tk.Frame(self.root, bg=self.colors['bg_secondary'], height=60)
         footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
@@ -224,6 +306,11 @@ Vous pouvez les modifier manuellement si nécessaire.
         # Afficher dans une fenêtre modale après 500ms
         self.root.after(500, lambda: messagebox.showinfo("🚀 Lumina Prêt", welcome_msg))
         
+    def _on_ai_option_changed(self):
+        """Sauvegarde immédiate des Options IA dans le .ini"""
+        self.ai_options = {k: v.get() for k, v in self.ai_vars.items()}
+        AIOptions.save(self.config, self.ai_options)
+
     def _toggle_recording(self):
         """Démarre ou arrête l'enregistrement"""
         if not self.is_recording:
@@ -244,15 +331,25 @@ Vous pouvez les modifier manuellement si nécessaire.
         output_dir.mkdir(parents=True, exist_ok=True)
         output_filename = f"Lumina_{timestamp}.mp4"
         output_path = output_dir / output_filename
-        
+
+        # Préflight : FFmpeg doit être disponible AVANT de démarrer
+        try:
+            VideoEncoder()
+        except FileNotFoundError as e:
+            messagebox.showerror("FFmpeg manquant", str(e))
+            return
+
         # Initialisation de l'enregistreur
+        options = {k: v.get() for k, v in self.ai_vars.items()}
         self.recorder = RecorderCore(
             resolution=resolution_str,
             fps=fps,
             audio_enabled=True,
-            audio_gain=audio_gain
+            audio_gain=audio_gain,
+            filters=AIOptions.build_filters(options),
+            on_filter_disabled=self._on_filter_disabled
         )
-        
+
         # Démarrage
         success = self.recorder.start_recording(str(output_path))
         
@@ -320,6 +417,16 @@ Vous pouvez les modifier manuellement si nécessaire.
             self.timer_label.config(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
             self.root.after(1000, self._update_timer)
             
+    def _on_filter_disabled(self, filter_name: str):
+        """Appelé depuis le thread de capture quand un filtre est trop lent."""
+        display = {'privacy_blur': 'Flou confidentialité',
+                   'clean_canvas': 'Masquer notifications',
+                   'overlay': 'Overlay métriques'}.get(filter_name,
+                                                       filter_name)
+        self.root.after(0, lambda: self.status_label.config(
+            text=f"⚠ {display} désactivé (machine trop lente)",
+            fg=self.colors['warning']))
+
     def _browse_folder(self):
         """Ouvre le sélecteur de dossier"""
         folder = filedialog.askdirectory(initialdir=self.save_path_var.get())
