@@ -5,3 +5,4 @@ pyaudio>=0.2.13
 pyautogui>=0.9.54
 requests>=2.31.0
 psutil>=5.9.0
+packaging>=23.0

@@ -1,253 +1,181 @@
-# 🎬 ScreenRecorder Pro - Application d'Enregistrement d'Écran
+# 🎬 ScreenRecorder Pro
 
-Application professionnelle d'enregistrement d'écran pour Windows avec système de mise à jour automatique.
+Enregistreur d'écran professionnel pour Windows avec analyse automatique du système et interface moderne.
 
-## ✨ Fonctionnalités Principales
+## ✨ Fonctionnalités
 
-### 📹 Enregistrement Vidéo Haute Qualité
-- **Résolutions supportées**: HD (720p), Full HD (1080p), 2K (1440p), **4K UHD (2160p)**
-- **FPS ajustables**: 24, 30, 60 FPS
-- **Bitrate contrôlable**: De 2500k à 20000k pour optimiser la taille des fichiers
-- **Encodage H.264** via FFmpeg pour une compression optimale
+- **📹 Qualité Vidéo** : HD, Full HD, 2K, 4K
+- **🔊 Volume Bas** : Réglage audio par défaut à 0.5x
+- **⚖️ Fichiers Légers** : Bitrate ajustable (2500k - 20000k)
+- **🤖 Analyse Système** : Détection automatique des capacités (ENTRY/STANDARD/PRO)
+- **🎨 UI/UX Moderne** : Interface intuitive, thème sombre par défaut
+- **🔄 Mises à Jour Auto** : Notification et installation automatiques
 
-### 🔊 Gestion Audio Avancée
-- Enregistrement audio synchronisé
-- **Contrôle du volume/gain** (0.1x à 2.0x)
-- Volume réduit par défaut (0.5x) pour un rendu "conséquemment bas"
-- Format AAC 128kbps pour une qualité audio optimale
+## 🏗️ Architecture du Projet
 
-### 🔄 Système de Mise à Jour Automatique
-- **Vérification automatique** au démarrage
-- **Notification de nouvelle version** avec changelog
-- **Téléchargement et installation** automatisés
-- Barre de progression en temps réel
-- Option de désactivation dans les paramètres
-
-### 💻 Interface Utilisateur Intuitive
-- Design moderne et épuré
-- Chronomètre en temps réel
-- Sélecteurs intelligents avec suggestions
-- Statuts clairs et indicateurs visuels
-- Menu complet (Fichier, Outils, Aide)
-
-## 🚀 Installation & Déploiement sur Windows
-
-### Option 1 : Créer un Vrai Installateur (Comme Docker/Telegram) ⭐ RECOMMANDÉ
-
-Cette méthode génère un fichier `Setup.exe` professionnel qui installe l'application dans `C:\Program Files`, crée des raccourcis et apparaît dans "Ajouter/Supprimer des programmes".
-
-**Prérequis :**
-- Python 3.8+ installé
-- [NSIS](https://nsis.sourceforge.io/Download) (outil gratuit pour créer des installateurs Windows)
-
-**Étapes :**
-
-```bash
-# 1. Lancer le script de build automatique
-build_installer.bat
+```
+ScreenRecorderPro/
+├── main.py                    # Point d'entrée principal
+├── requirements.txt           # Dépendances Python
+├── build_installer.bat        # Script de compilation
+├── setup_installer.nsi        # Script d'installation NSIS
+│
+├── src/                       # Code source
+│   ├── __init__.py
+│   ├── core/                  # Logique métier
+│   │   ├── recorder.py        # Enregistrement vidéo/audio
+│   │   ├── encoder.py         # Encodage FFmpeg
+│   │   └── system_analyzer.py # Analyse des performances
+│   │
+│   ├── ui/                    # Interface utilisateur
+│   │   ├── main_window.py     # Fenêtre principale
+│   │   ├── components.py      # Composants réutilisables
+│   │   └── themes.py          # Thèmes et couleurs
+│   │
+│   └── utils/                 # Utilitaires
+│       ├── updater.py         # Gestion des mises à jour
+│       └── config.py          # Configuration utilisateur
+│
+└── assets/                    # Ressources graphiques
+    ├── icons/
+    └── fonts/
 ```
 
-**Ce que fait le script :**
-1. Vérifie les prérequis (Python, PyInstaller)
-2. Installe les dépendances Python
-3. Compile l'application en un exécutable unique (`screen_recorder.exe`)
-4. Génère un installateur professionnel (`ScreenRecorderPro_Setup_1.0.0.exe`)
+## 🚀 Installation
 
-**Résultat final :**
-- Fichier créé : `dist_installer\ScreenRecorderPro_Setup_1.0.0.exe`
-- Double-cliquez dessus pour installer l'application comme n'importe quel logiciel professionnel
-- L'installateur ajoute :
-  - Raccourci sur le Bureau
-  - Entrée dans le Menu Démarrer
-  - Désinstallateur dans "Paramètres > Applications"
+### 1. Prérequis
 
----
+- **Windows 10/11**
+- **Python 3.8+**
+- **FFmpeg** : [Télécharger ici](https://www.gyan.dev/ffmpeg/builds/)
 
-### Option 2 : Utilisation Rapide (Sans Installateur)
-
-Si vous voulez juste tester rapidement sans créer d'installateur :
+### 2. Installer les dépendances
 
 ```bash
-# 1. Installer FFmpeg (nécessaire pour l'encodage vidéo)
-choco install ffmpeg
-# OU télécharger depuis https://www.gyan.dev/ffmpeg/builds/
-
-# 2. Installer les dépendances Python
 pip install -r requirements.txt
-
-# 3. Créer l'exécutable simple
-pyinstaller --onefile --windowed --name "screen_recorder" screen_recorder.py
-
-# 4. Utiliser l'application
-# Le fichier est dans : dist\screen_recorder.exe
-# Copiez-le où vous voulez et double-cliquez dessus
 ```
 
----
+### 3. Tester l'application
 
-## 🔄 Système de Mise à Jour Automatique
-
-L'application intègre un système de mise à jour intelligent similaire aux logiciels professionnels :
-
-### Comment ça marche ?
-1. **Détection automatique** : Au démarrage, l'application vérifie la version sur votre serveur
-2. **Notification** : Si une nouvelle version existe, une fenêtre pop-up informe l'utilisateur avec les notes de version
-3. **Téléchargement & Installation** : L'utilisateur accepte et la mise à jour se télécharge, puis se lance automatiquement
-
-### Comment publier une mise à jour ?
-
-**Étape 1 :** Modifier la version dans `screen_recorder.py`
-```python
-APP_VERSION = "1.1.0"  # Augmentez le numéro de version
-```
-
-**Étape 2 :** Régénérer l'installateur
 ```bash
+python main.py
+```
+
+## 📦 Créer un Installateur
+
+Pour générer un exécutable et un installateur professionnel :
+
+```cmd
 build_installer.bat
 ```
 
-**Étape 3 :** Héberger le nouvel installateur sur votre serveur/web/cloud
+Cela créera :
+- `dist/screen_recorder.exe` - Exécutable autonome
+- `dist_installer/ScreenRecorderPro_Setup_1.0.0.exe` - Programme d'installation
 
-**Étape 4 :** Créer/mettre à jour le fichier `version.json` sur votre serveur :
+L'installateur va :
+- ✅ Installer dans `C:\Program Files\MonEntreprise\ScreenRecorderPro`
+- ✅ Créer un raccourci sur le Bureau
+- ✅ Ajouter une entrée au Menu Démarrer
+- ✅ Permettre la désinstallation via Paramètres Windows
 
-```json
-{
-  "latest_version": "1.1.0",
-  "download_url": "https://votre-site.com/downloads/ScreenRecorderPro_Setup_1.1.0.exe",
-  "release_notes": "✅ Correction de bugs\n✅ Amélioration qualité 4K\n✅ Nouveau curseur de volume"
-}
-```
+## 🎯 Niveaux de Configuration
 
-**Étape 5 :** Mettre à jour l'URL dans `screen_recorder.py` :
+L'application détecte automatiquement votre matériel et recommande les meilleurs paramètres :
+
+| Niveau | RAM | CPU | Résolution Max | FPS | Bitrate |
+|--------|-----|-----|----------------|-----|---------|
+| **ENTRY** | < 8 GB | < 4 cœurs | 720p | 30 | 2500k |
+| **STANDARD** | 8-16 GB | 4-8 cœurs | 1080p | 60 | 5000k |
+| **PRO** | > 16 GB | > 8 cœurs | 4K | 60 | 15000k |
+
+## ⚙️ Paramètres Recommandés
+
+### Pour un volume bas (défaut)
+- **Gain Audio** : 0.5x (réduit le volume de 50%)
+- Ajustable de 0.1x à 2.0x selon vos besoins
+
+### Pour des fichiers légers
+- **Bitrate** : 2500k - 5000k
+- **Résolution** : 720p ou 1080p
+- **FPS** : 30
+
+### Pour une qualité maximale
+- **Bitrate** : 15000k - 20000k
+- **Résolution** : 4K
+- **FPS** : 60
+
+## 🔄 Système de Mise à Jour
+
+### Pour les développeurs
+
+Quand vous publiez une nouvelle version :
+
+1. Mettre à jour la version dans `src/__init__.py` :
+   ```python
+   __version__ = "1.1.0"
+   ```
+
+2. Recompiler avec `build_installer.bat`
+
+3. Déposer le nouveau Setup.exe sur votre serveur
+
+4. Créer un fichier `version.json` sur votre serveur :
+   ```json
+   {
+     "version": "1.1.0",
+     "message": "Nouvelles fonctionnalités...",
+     "download_url": "https://votre-site.com/ScreenRecorderPro_Setup_1.1.0.exe",
+     "changelog": ["Feature 1", "Feature 2"]
+   }
+   ```
+
+Les utilisateurs recevront une notification au prochain lancement !
+
+## 🎨 Design & UX
+
+- **Thème Sombre Moderne** : Réduit la fatigue visuelle
+- **Couleurs** :
+  - Fond : `#1e1e2e`
+  - Surface : `#2a2a3e`
+  - Primaire : `#7c3aed` (Violet)
+  - Succès : `#10b981` (Vert)
+  
+- **Composants** :
+  - Boutons arrondis avec effets hover
+  - Badges de niveau système colorés
+  - Indicateurs d'état en temps réel
+
+## 🛠️ Développement
+
+### Ajouter une nouvelle fonctionnalité
+
+1. Créer le module dans le dossier approprié (`core/`, `ui/`, ou `utils/`)
+2. Exporter dans le `__init__.py` correspondant
+3. Importer dans `main.py` ou les autres modules
+
+### Structure type d'un module
+
 ```python
-UPDATE_SERVER_URL = "https://votre-site.com/version.json"
+"""
+NomModule - Description courte
+"""
+
+class MaClasse:
+    """Documentation de la classe"""
+    
+    def __init__(self):
+        pass
+    
+    def ma_methode(self):
+        """Documentation de la méthode"""
+        pass
 ```
 
-Désormais, tous les utilisateurs recevront une notification de mise à jour au prochain lancement !
+## 📝 Licence
 
----
+Propriétaire - Tous droits réservés
 
-## 📖 Utilisation Quotidienne
+## 🤝 Support
 
-### Démarrer un Enregistrement
-1. Lancez l'application
-2. Configurez vos paramètres:
-   - **Résolution**: Choisissez HD, Full HD, 2K ou 4K
-   - **FPS**: 24, 30 ou 60 selon vos besoins
-   - **Bitrate**: Plus élevé = meilleure qualité mais fichier plus lourd
-   - **Volume**: Réglez le gain audio (0.5 recommandé pour volume bas)
-3. Cliquez sur **"▶️ Démarrer l'Enregistrement"**
-4. Un chronomètre s'affiche pour suivre la durée
-5. Cliquez sur **"⏹️ Arrêter"** pour terminer
-
-### Gérer les Mises à Jour
-- **Vérification automatique**: Au démarrage, l'application vérifie les nouvelles versions
-- **Notification**: Une fenêtre s'affiche si une mise à jour est disponible
-- **Installation**: Cliquez sur "Télécharger et Installer" pour mettre à jour
-- **Manuel**: Menu → Outils → Vérifier les mises à jour
-
-### Personnalisation
-- **Dossier de sortie**: Cliquez sur "Parcourir..." pour choisir où sauvegarder vos vidéos
-- **Paramètres**: Menu → Outils → Paramètres pour configurer les mises à jour automatiques
-
-## 🔧 Configuration Technique
-
-### Structure du Projet
-```
-screen_recorder/
-├── screen_recorder.py      # Application principale
-├── requirements.txt        # Dépendances Python
-├── README.md              # Ce fichier
-└── config.json            # Configuration utilisateur (généré automatiquement)
-```
-
-### Classes Principales
-- `UpdateManager`: Gestion des mises à jour automatiques
-- `ScreenRecorder`: Capture et encodage vidéo
-- `AudioRecorder`: Capture et traitement audio
-- `ScreenRecorderApp`: Interface graphique utilisateur
-
-## 📁 Fichiers du Projet
-
-| Fichier | Description |
-|---------|-------------|
-| `screen_recorder.py` | Code source principal de l'application |
-| `build_installer.bat` | **Script de build** - Crée l'exécutable et l'installateur |
-| `setup_installer.nsi` | Script NSIS pour générer le Setup.exe professionnel |
-| `requirements.txt` | Liste des dépendances Python |
-| `README.md` | Documentation complète |
-
-## 🛠️ Développement Futur & Évolutions
-
-Pour faire évoluer votre application comme un logiciel professionnel :
-
-### Ajouter une Nouvelle Fonctionnalité
-1. Modifiez `screen_recorder.py`
-2. Incrémentez la version : `APP_VERSION = "1.1.0"`
-3. Testez localement : `python screen_recorder.py`
-4. Générez le nouvel installateur : `build_installer.bat`
-5. Déployez le nouveau `Setup.exe` sur votre serveur
-
-### Workflow de Mise à Jour Typique
-```bash
-# 1. Modifier le code source
-notepad screen_recorder.py
-
-# 2. Changer le numéro de version dans le fichier
-# APP_VERSION = "1.2.0"
-
-# 3. Reconstruire l'installateur
-build_installer.bat
-
-# 4. Tester l'installateur généré
-dist_installer\ScreenRecorderPro_Setup_1.2.0.exe
-
-# 5. Déployer sur votre serveur/cloud
-# Copiez vers votre hébergement web
-```
-
-### Bonnes Pratiques
-- **Versionnement sémantique** : MAJEURE.MINEURE.CORRECTIF (ex: 1.2.3)
-- **Notes de version** : Tenez un journal des changements dans le fichier `version.json`
-- **Tests** : Testez toujours l'installateur sur une machine propre avant déploiement
-- **Backup** : Sauvegardez vos versions stables
-
----
-
-## ⚠️ Notes Importantes
-
-- **FFmpeg requis** pour l'encodage H.264 haute qualité
-- **PyAudio** peut nécessiter des dépendances système supplémentaires sur Windows
-- Les **permissions microphone** doivent être activées pour l'enregistrement audio
-- L'application utilise **environ 200-500 MB RAM** pendant l'enregistrement
-- **NSIS** est uniquement nécessaire pour créer l'installateur, pas pour utiliser l'application
-
----
-
-## 🤝 Support & Dépannage
-
-### Problèmes Courants
-
-**"ffmpeg n'est pas reconnu"**
-```powershell
-# Installer FFmpeg via Chocolatey
-choco install ffmpeg
-```
-
-**L'installateur ne se crée pas**
-- Installez NSIS depuis https://nsis.sourceforge.io/Download
-- Relancez `build_installer.bat`
-
-**Erreurs PyAudio**
-```bash
-pip install pipwin
-pipwin install pyaudio
-```
-
-**L'application ne détecte pas les mises à jour**
-- Vérifiez que `UPDATE_SERVER_URL` pointe vers un fichier `version.json` accessible
-- Assurez-vous que le serveur autorise les requêtes CORS
-
----
-
-**Développé avec ❤️ en Python - Prêt pour un usage professionnel quotidien**
+Pour toute question ou problème, contactez le support technique.
