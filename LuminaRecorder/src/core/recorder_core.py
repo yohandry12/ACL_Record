@@ -75,7 +75,7 @@ class RecorderCore:
         self.audio_frames = []
         self.start_time = datetime.now()
         
-        print(f"[Lumina] Démarrage de l'enregistrement : {resolution} @ {fps} FPS")
+        print(f"[Lumina] Démarrage de l'enregistrement : {self.resolution} @ {self.fps} FPS")
         
         # Lancement des threads
         self.recording_thread = threading.Thread(target=self._capture_screen)
@@ -148,9 +148,10 @@ class RecorderCore:
                 
                 # Application du gain audio
                 if self.audio_gain != 1.0:
-                    # Conversion simple pour ajuster le volume (à améliorer avec numpy)
-                    pass 
-                    
+                    audio_array = np.frombuffer(data, dtype=np.int16)
+                    audio_array = np.clip(audio_array * self.audio_gain, -32768, 32767).astype(np.int16)
+                    data = audio_array.tobytes()
+
                 self.audio_frames.append(data)
                 
             stream.stop_stream()

@@ -55,16 +55,13 @@ class SystemAnalyzer:
         try:
             # Windows: PowerShell pour WMI
             if self.platform_system == "Windows":
-                cmd = 'powershell "Get-WmiObject Win32_VideoController | Select-Object Name, AdapterRAM"'
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
+                cmd = 'powershell -NoProfile "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"'
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
                 if result.returncode == 0:
-                    output = result.stdout
-                    lines = [l.strip() for l in output.split('\n') if l.strip()]
-                    if len(lines) >= 2:
-                        # Parsing basique
-                        name_line = lines[1]
+                    names = [l.strip() for l in result.stdout.split('\n') if l.strip()]
+                    if names:
                         gpu_info['detected'] = True
-                        gpu_info['name'] = name_line.split(':')[1].strip() if ':' in name_line else 'Unknown'
+                        gpu_info['name'] = names[0]
                         
             # Linux: lspci
             elif self.platform_system == "Linux":

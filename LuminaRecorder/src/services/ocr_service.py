@@ -145,7 +145,8 @@ class OCRService:
             elif hasattr(self.ocr_engine, 'image_to_data'):
                 # Tesseract
                 import pandas as pd
-                
+                import pytesseract
+
                 data = self.ocr_engine.image_to_data(rgb_frame, output_type=pytesseract.Output.DATAFRAME)
                 
                 # Filtrer les résultats valides

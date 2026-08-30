@@ -51,8 +51,8 @@ class StyledButton(tk.Button):
 class ConfigCard(tk.LabelFrame):
     """Carte de configuration avec titre et contenu"""
     
-    def __init__(self, master, title, **kwargs):
-        super().__init__(master, text=title, padx=15, pady=15,
+    def __init__(self, master, text="", **kwargs):
+        super().__init__(master, text=text, padx=15, pady=15,
                         font=("Segoe UI", 10, "bold"),
                         relief=tk.GROOVE, borderwidth=2, **kwargs)
         
