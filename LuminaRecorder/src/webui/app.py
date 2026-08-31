@@ -108,6 +108,8 @@ def run() -> int:
         # Le raccourci est enregistré une fois la fenêtre prête : son
         # état est ensuite lu par get_initial_state
         bridge.setup_hotkey()
+        # Vérification des mises à jour : en arrière-plan, silencieuse
+        bridge.start_update_watch()
 
     def on_closing():
         # Libère le raccourci et arrête une capture en cours, sinon

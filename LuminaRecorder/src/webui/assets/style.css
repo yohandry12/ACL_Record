@@ -115,6 +115,95 @@ body.compact .backdrop { display: none; }
   margin-right: 8px;
 }
 
+/* Version installée : simple mention. Quand une mise à jour est
+   publiée, la pastille prend l'accent ambre et respire doucement —
+   assez pour attirer l'œil, jamais au point de gêner. */
+.version-tag {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-right: 8px;
+  background: none;
+  font-family: inherit;
+  cursor: default;
+  transition: color 200ms var(--ease), border-color 200ms var(--ease),
+              background 200ms var(--ease);
+}
+
+.version-tag.has-update {
+  color: #0D0E11;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  animation: update-breathe 2.6s var(--ease) infinite;
+}
+
+.version-tag.has-update:hover {
+  animation: none;
+  filter: brightness(1.12);
+}
+
+@keyframes update-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.35); }
+  50%      { box-shadow: 0 0 0 5px rgba(245, 158, 11, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .version-tag.has-update { animation: none; }
+}
+
+/* ---------- Boîte de dialogue de mise à jour ---------- */
+
+/* Notes de version : bloc défilant, jamais plus d'un tiers d'écran */
+.update-notes {
+  margin: 10px 0 2px;
+  padding: 10px 12px;
+  max-height: 32vh;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.update-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.update-progress-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.update-progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 300ms var(--ease);
+}
+
+.update-progress-label {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  min-width: 38px;
+  text-align: right;
+}
+
 /* ---------- Zone principale ---------- */
 
 .stage {

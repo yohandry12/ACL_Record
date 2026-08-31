@@ -45,6 +45,9 @@
 <header class="titlebar">
   <div class="brand"><span class="brand-dot"></span>LUMINA</div>
   <div class="titlebar-spacer"></div>
+  <!-- Version : simple mention en temps normal, pastille de mise à
+       jour cliquable quand une release plus récente est publiée -->
+  <button class="version-tag" id="version-tag" title="Version installée">v—</button>
   <span class="profile-tag" id="profile">—</span>
 </header>
 
@@ -269,6 +272,36 @@
       <span class="modal-status" id="ai-status"></span>
       <button class="btn-sub" id="ai-test">Tester</button>
       <button class="btn-primary" id="ai-save">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mise à jour disponible -->
+<div class="modal" id="update-modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Mise à jour <span id="update-version"></span></h3>
+      <button class="modal-close" id="update-close" aria-label="Fermer">✕</button>
+    </div>
+
+    <p class="modal-note">Une nouvelle version de Lumina est disponible.
+      Vos réglages et vos clés API seront conservés.</p>
+
+    <div class="update-notes" id="update-notes" hidden></div>
+
+    <div class="update-progress" id="update-progress" hidden>
+      <div class="update-progress-track">
+        <div class="update-progress-bar" id="update-progress-bar"></div>
+      </div>
+      <span class="update-progress-label" id="update-progress-label">0 %</span>
+    </div>
+
+    <div class="modal-actions">
+      <span class="modal-status" id="update-status"></span>
+      <button class="btn-sub" id="update-later">Plus tard</button>
+      <button class="btn-primary" id="update-install">
+        Installer <span id="update-size"></span>
+      </button>
     </div>
   </div>
 </div>

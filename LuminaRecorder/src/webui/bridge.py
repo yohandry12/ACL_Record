@@ -46,6 +46,7 @@ from services.ai_provider import (DEFAULT_PROVIDER, build_engine,
                                   build_engine_from_config,
                                   sends_data_offsite)
 from services.ocr_service import ocr_is_available
+from services.update_checker import check_for_update, download_setup
 from utils.config_manager import ConfigManager
 from version import __version__ as APP_VERSION
 
@@ -134,6 +135,13 @@ class LuminaBridge:
         self._compact = False
         self._full_position = None
         self._full_geometry = None
+
+        # Mise à jour automatique. Les deux fonctions sont des attributs
+        # pour que les tests les remplacent sans toucher au réseau.
+        self._update_info = None
+        self._update_installing = False
+        self._update_checker = check_for_update
+        self._update_downloader = download_setup
 
         self._purge_temp_files()
 
@@ -789,6 +797,85 @@ class LuminaBridge:
             self.toggle_recording()
         except Exception as e:
             print(f"[Lumina] Raccourci : {e}")
+
+    # ------------------------------------------------------------------
+    # Mise à jour automatique
+    # ------------------------------------------------------------------
+
+    def start_update_watch(self):
+        """Vérifie en arrière-plan si une release plus récente existe.
+
+        Lancée une fois la fenêtre prête. Silencieuse par nature : hors
+        ligne ou sans release publiée, il ne se passe rien du tout. Se
+        désactive avec [updates] check_on_start = false dans la config.
+        """
+        if not self.config.get_bool('updates', 'check_on_start',
+                                    fallback=True):
+            return
+
+        def run():
+            # La page d'abord, la mise à jour ensuite : rien ne doit
+            # ralentir l'affichage initial
+            time.sleep(3.0)
+            info = self._update_checker(APP_VERSION)
+            if info is not None:
+                self._update_info = info
+                self.emit('update_available', {
+                    'version': info.version,
+                    'notes': info.notes,
+                    'size': info.size,
+                })
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def check_updates_now(self) -> dict:
+        """Vérification à la demande (bouton de l'interface)."""
+        try:
+            info = self._update_checker(APP_VERSION)
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+        if info is None:
+            return {'ok': True, 'available': False, 'version': APP_VERSION}
+        self._update_info = info
+        return {'ok': True, 'available': True, 'version': info.version,
+                'notes': info.notes, 'size': info.size}
+
+    def install_update(self) -> dict:
+        """Télécharge le setup puis le lance ; l'application se ferme.
+
+        Le setup NSIS fait le reste : fermeture de l'application,
+        désinstallation silencieuse de l'ancienne version, installation
+        de la nouvelle, réglages et clés API conservés.
+        """
+        if self.state != IDLE:
+            return {'ok': False,
+                    'error': "Terminez l'enregistrement avant de mettre à jour"}
+        if self._update_info is None:
+            return {'ok': False, 'error': "Aucune mise à jour disponible"}
+        if self._update_installing:
+            return {'ok': False, 'error': "Téléchargement déjà en cours"}
+        self._update_installing = True
+
+        def run():
+            try:
+                dest = os.path.join(str(get_temp_dir()), 'updates')
+                path = self._update_downloader(
+                    self._update_info, dest,
+                    progress_cb=lambda p: self.emit('update_progress', p))
+                self.emit('update_launching', None)
+                os.startfile(path)
+                # Laisser l'événement atteindre la page avant de fermer
+                time.sleep(1.5)
+                self.shutdown()
+                if self._window is not None:
+                    self._window.destroy()
+            except Exception as e:
+                self._update_installing = False
+                self.emit('update_error',
+                          f"Mise à jour impossible : {e}")
+
+        threading.Thread(target=run, daemon=True).start()
+        return {'ok': True}
 
     # ------------------------------------------------------------------
     # Divers

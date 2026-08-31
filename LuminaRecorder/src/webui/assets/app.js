@@ -158,8 +158,90 @@ window.luminaEvent = function (message) {
   } else if (event === 'done') {
     el.progressBar.style.width = '100%';
     showResult(payload);
+  } else if (event === 'update_available') {
+    onUpdateAvailable(payload);
+  } else if (event === 'update_progress') {
+    onUpdateProgress(payload);
+  } else if (event === 'update_launching') {
+    onUpdateLaunching();
+  } else if (event === 'update_error') {
+    onUpdateError(payload);
   }
 };
+
+/* ---------- Mise à jour automatique ----------
+ *
+ * Le pont pousse update_available quand une release plus récente est
+ * publiée sur GitHub. La pastille de version passe en ambre ; le reste
+ * ne bouge pas — une mise à jour ne doit jamais interrompre ce que
+ * l'utilisateur est en train de faire.
+ */
+
+let updateInfo = null;
+let updateDownloading = false;
+
+function onUpdateAvailable(payload) {
+  updateInfo = payload;
+  const tag = $('version-tag');
+  tag.textContent = payload.version + ' disponible';
+  tag.classList.add('has-update');
+  tag.title = 'Une mise à jour est prête — cliquer pour voir';
+}
+
+function openUpdateModal() {
+  if (!updateInfo) return;
+  $('update-version').textContent = updateInfo.version;
+  $('update-size').textContent = updateInfo.size
+    ? '(' + formatSize(updateInfo.size) + ')' : '';
+  const notes = $('update-notes');
+  notes.textContent = updateInfo.notes || '';
+  notes.hidden = !updateInfo.notes;
+  $('update-status').textContent = '';
+  $('update-progress').hidden = true;
+  $('update-install').disabled = false;
+  $('update-later').disabled = false;
+  $('update-modal').hidden = false;
+}
+
+function closeUpdateModal() {
+  // Pas de fermeture pendant le téléchargement : l'utilisateur doit
+  // voir si son installateur est complet ou en échec
+  if (updateDownloading) return;
+  $('update-modal').hidden = true;
+}
+
+async function startUpdateInstall() {
+  const result = await call('install_update');
+  if (!result || !result.ok) {
+    $('update-status').textContent =
+      (result && result.error) || 'Mise à jour impossible';
+    return;
+  }
+  updateDownloading = true;
+  $('update-install').disabled = true;
+  $('update-later').disabled = true;
+  $('update-progress').hidden = false;
+  $('update-status').textContent = 'Téléchargement…';
+}
+
+function onUpdateProgress(fraction) {
+  const pct = Math.round((fraction || 0) * 100);
+  $('update-progress-bar').style.width = pct + '%';
+  $('update-progress-label').textContent = pct + ' %';
+}
+
+function onUpdateLaunching() {
+  $('update-status').textContent =
+    "L'installateur démarre — Lumina va se fermer.";
+}
+
+function onUpdateError(message) {
+  updateDownloading = false;
+  $('update-install').disabled = false;
+  $('update-later').disabled = false;
+  $('update-progress').hidden = true;
+  $('update-status').textContent = message;
+}
 
 /* ---------- Forme d'onde du widget ----------
  *
@@ -435,6 +517,7 @@ function disable(wrapperId, inputId, hintId, message) {
 
 function populate(state) {
   el.profile.textContent = state.profile;
+  if (state.version) $('version-tag').textContent = 'v' + state.version;
   el.hotkey.textContent = state.hotkey;
   el.hotkeyNote.textContent = state.hotkey_active
     ? 'fonctionne en arrière-plan'
@@ -536,6 +619,14 @@ function wire() {
   bindCheckbox('summary', 'summary');
   bindCheckbox('subtitle_fix', 'subtitle_fix');
 
+  $('version-tag').addEventListener('click', openUpdateModal);
+  $('update-close').addEventListener('click', closeUpdateModal);
+  $('update-later').addEventListener('click', closeUpdateModal);
+  $('update-install').addEventListener('click', startUpdateInstall);
+  $('update-modal').addEventListener('click', (event) => {
+    if (event.target === $('update-modal')) closeUpdateModal();
+  });
+
   $('open-ai-config').addEventListener('click', openAiModal);
   $('ai-close').addEventListener('click', closeAiModal);
   $('ai-save').addEventListener('click', saveAiConfig);
@@ -561,6 +652,10 @@ function wire() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !$('ai-modal').hidden) {
       closeAiModal();
+      return;
+    }
+    if (event.key === 'Escape' && !$('update-modal').hidden) {
+      closeUpdateModal();
       return;
     }
     if (event.key === 'Escape' && state === 'recording') {
