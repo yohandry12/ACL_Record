@@ -6,6 +6,8 @@
  * diverge du moteur.
  */
 
+import { ShardField } from './shards.js';
+
 const $ = (id) => document.getElementById(id);
 
 const el = {
@@ -36,6 +38,7 @@ const el = {
 
 let state = 'idle';
 let statusTimer = null;
+let backdrop = null;
 
 /* ---------- utilitaires ---------- */
 
@@ -115,6 +118,14 @@ function applyState(next) {
     stopWave();
   }
   if (next === 'recording') startWave();
+
+  // Le fond s'arrete des le decompte et jusqu'a la fin du traitement :
+  // une animation permanente vole des cycles a la capture d'ecran, et
+  // l'encodage FFmpeg qui suit sature deja le processeur.
+  if (backdrop) {
+    if (next === 'idle') backdrop.resume();
+    else backdrop.pause();
+  }
   if (next === 'pending') {
     el.widgetLabel.textContent = 'Préparation';
     setStatus('Démarrage dans quelques secondes…');
@@ -394,6 +405,27 @@ function wire() {
 
 window.addEventListener('pywebviewready', async () => {
   wire();
+
+  // Fond anime : palette du theme, flux par defaut, repulsion au curseur
+  const canvas = $('backdrop');
+  if (canvas) {
+    backdrop = new ShardField(canvas, {
+      shardColor: '#F59E0B',      // ambre du theme
+      accentColor: '#EF4444',     // rouge d'enregistrement, pour les ondes
+      flow: 'stream',
+      detail: 'balanced',
+      density: 0.9,
+      speed: 0.85,
+      spread: 1.1,
+      glow: 1,
+      interaction: 'repel',
+      interactionRadius: 1.4,
+      rippleIntensity: 1,
+      opacity: 0.42,
+    });
+    backdrop.mount();
+  }
+
   const initial = await call('get_initial_state');
   if (initial) {
     populate(initial);

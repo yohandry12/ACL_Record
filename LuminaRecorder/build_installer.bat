@@ -86,6 +86,12 @@ pyinstaller ^
     --collect-submodules=postprocess ^
     --collect-submodules=services ^
     --collect-submodules=ai ^
+    --collect-submodules=webui ^
+    --hidden-import=webview ^
+    --hidden-import=keyring ^
+    --hidden-import=keyring.backends.Windows ^
+    --hidden-import=clr ^
+    --collect-submodules=webview ^
     main.py
 
 if errorlevel 1 (

@@ -54,6 +54,28 @@ body {
   flex-direction: column;
 }
 
+/* ---------- Fond animé ---------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;   /* ne doit jamais intercepter un clic */
+}
+
+/* Tout le contenu passe devant le fond */
+.titlebar, .stage, .panels, .progress-wrap, .result {
+  position: relative;
+  z-index: 1;
+}
+
+/* Le widget d'enregistrement occupe toute la fenêtre : pas de fond
+ * animé derrière, il serait invisible et coûterait des cycles pendant
+ * la capture */
+body.compact .backdrop { display: none; }
+
 /* ---------- Barre de titre ---------- */
 
 .titlebar {

@@ -7,6 +7,10 @@
 </head>
 <body data-state="idle">
 
+<!-- Fond animé : inspiré d'AeroShards, rendu en Canvas 2D. Gelé pendant
+     l'enregistrement pour ne pas voler de cycles à la capture. -->
+<canvas class="backdrop" id="backdrop" aria-hidden="true"></canvas>
+
 <!-- Widget d'enregistrement : seule chose visible pendant la capture.
      Composition reprise de assets/Records_examples/record.webp —
      durée dominante, taille du fichier, format, arrêt, forme d'onde. -->
@@ -210,6 +214,6 @@
 
 </main>
 
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
