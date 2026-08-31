@@ -399,56 +399,161 @@ body[data-state="processing"] .progress-wrap { display: flex; }
 }
 .progress-step { font-size: 11px; color: var(--text-dim); }
 
-/* ---------- Barre compacte (pendant l'enregistrement) ---------- */
+/* ---------- Widget d'enregistrement ---------- */
+/* Composition reprise de assets/Records_examples/record.webp : durée
+ * dominante, taille du fichier, format, arrêt, forme d'onde en bas.
+ * Une différence assumée : l'original est orange, mais le thème réserve
+ * déjà le rouge à l'enregistrement et l'ambre aux actions. Garder les
+ * deux codes couleur du thème plutôt qu'en introduire un troisième. */
 
 body.compact { background: transparent; }
 body.compact .titlebar,
 body.compact .stage,
 body.compact .panels,
-body.compact .progress-wrap { display: none; }
+body.compact .progress-wrap,
+body.compact .result { display: none; }
 
-.compact-bar { display: none; }
+.widget { display: none; }
 
-body.compact .compact-bar {
+body.compact .widget {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 14px;
+  flex-direction: column;
   height: 100%;
-  padding: 0 14px;
-  background: var(--bg-panel);
+  padding: 11px 14px 0;
+  background: #0D0E11;
   border: 1px solid var(--border-bright);
-  border-radius: var(--radius);
+  border-radius: 14px;
+  overflow: hidden;
+  /* Toute la surface déplace la fenêtre, sauf les boutons */
   -webkit-app-region: drag;
 }
 
-.compact-bar .dot {
-  width: 9px; height: 9px;
+.widget-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.widget-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.widget .dot {
+  width: 8px; height: 8px;
   border-radius: 50%;
   background: var(--rec);
-  animation: pulse 2s var(--ease) infinite;
   flex: none;
+  animation: pulse 2s var(--ease) infinite;
 }
 
-.compact-bar .timer {
-  font-size: 17px;
-  color: var(--text);
-  flex: 1;
-}
-
-.compact-bar button {
-  -webkit-app-region: no-drag;
-  padding: 6px 14px;
-  background: var(--rec-soft);
-  border: 1px solid var(--rec);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 12px;
+.widget-size {
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--rec);
+  color: #fff;
+  font-size: 10.5px;
   font-weight: 600;
-  cursor: pointer;
-  transition: background 140ms var(--ease);
+  font-variant-numeric: tabular-nums;
 }
-.compact-bar button:hover { background: var(--rec); }
+
+.widget-time {
+  margin-top: 1px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 40px;
+  font-weight: 300;
+  line-height: 1.06;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.widget-time sup {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-left: 2px;
+}
+
+.widget-bottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-bottom: 9px;
+}
+
+.widget-format {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
+.widget-actions { display: flex; gap: 8px; -webkit-app-region: no-drag; }
+
+.widget-actions button {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border-bright);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 140ms var(--ease), border-color 140ms var(--ease),
+              transform 140ms var(--ease);
+}
+.widget-actions button:hover {
+  background: var(--rec);
+  border-color: var(--rec);
+  transform: scale(1.06);
+}
+.widget-actions button:active { transform: scale(0.96); }
+
+/* Forme d'onde : bande pleine en bas, comme le modèle */
+.widget-wave {
+  position: absolute;
+  left: 10px; right: 10px; bottom: 10px;
+  width: calc(100% - 20px);
+  height: 36px;
+  border-radius: 9px;
+  background: var(--rec);
+  pointer-events: none;
+}
+
+/* ---------- Décompte ---------- */
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+  background: #0D0E11;
+  z-index: 2;
+}
+body[data-state="pending"] .countdown { display: grid; }
+
+.countdown span {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 62px;
+  font-weight: 300;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  /* Une pulsation par chiffre : l'animation est relancée en JS à chaque
+   * changement, ce qui rend le rythme du décompte perceptible */
+  animation: countdown-tick 900ms var(--ease);
+}
+
+@keyframes countdown-tick {
+  0%   { opacity: 0; transform: scale(1.5); }
+  22%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0.75; transform: scale(1); }
+}
 
 /* ---------- Résultat ---------- */
 

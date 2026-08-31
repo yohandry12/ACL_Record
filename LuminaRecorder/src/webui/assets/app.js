@@ -13,7 +13,13 @@ const el = {
   record: $('record'),
   recordLabel: $('record-label'),
   timer: $('timer'),
-  compactTimer: $('compact-timer'),
+  widgetTimer: $('widget-timer'),
+  widgetHours: $('widget-hours'),
+  widgetSize: $('widget-size'),
+  widgetLabel: $('widget-label'),
+  widgetWave: $('widget-wave'),
+  countdown: $('countdown'),
+  countdownValue: $('countdown-value'),
   status: $('status'),
   profile: $('profile'),
   hotkey: $('hotkey'),
@@ -38,6 +44,23 @@ function formatDuration(totalSeconds) {
   const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
   const s = String(totalSeconds % 60).padStart(2, '0');
   return `${h}:${m}:${s}`;
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '0 Mo';
+  const mo = bytes / (1024 * 1024);
+  if (mo >= 1024) return (mo / 1024).toFixed(2) + ' Go';
+  return (mo >= 10 ? mo.toFixed(0) : mo.toFixed(1)) + ' Mo';
+}
+
+/* Le widget donne minutes:secondes ; les heures passent en exposant,
+ * comme sur le modele, pour que les chiffres restent lisibles. */
+function updateWidgetTime(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+  const sec = String(totalSeconds % 60).padStart(2, '0');
+  el.widgetTimer.textContent = `${m}:${sec}`;
+  el.widgetHours.textContent = h > 0 ? `${h}h` : '';
 }
 
 function setStatus(message, kind) {
@@ -71,7 +94,10 @@ function applyState(next) {
   el.body.dataset.state = next;
   // La barre compacte remplace la fenêtre pendant la capture : la fenêtre
   // pleine masquerait l'écran que l'on filme
-  el.body.classList.toggle('compact', next === 'recording');
+  // Le widget apparait des le decompte : basculer au demarrage exact de
+  // la capture ferait sauter la fenetre dans l'enregistrement lui-meme
+  el.body.classList.toggle('compact',
+    next === 'recording' || next === 'pending');
 
   const labels = {
     idle: "COMMENCER L'ENREGISTREMENT",
@@ -84,10 +110,16 @@ function applyState(next) {
 
   if (next === 'idle') {
     el.timer.textContent = '00:00:00';
-    el.compactTimer.textContent = '00:00:00';
+    updateWidgetTime(0);
+    el.widgetSize.textContent = '0 Mo';
+    stopWave();
   }
+  if (next === 'recording') startWave();
   if (next === 'pending') {
-    setStatus('Cliquez sur la fenêtre à enregistrer…');
+    el.widgetLabel.textContent = 'Préparation';
+    setStatus('Démarrage dans quelques secondes…');
+  } else {
+    el.widgetLabel.textContent = 'Enregistrement';
   }
 }
 
@@ -98,9 +130,11 @@ window.luminaEvent = function (message) {
   if (event === 'state') {
     applyState(payload);
   } else if (event === 'tick') {
-    const text = formatDuration(payload);
-    el.timer.textContent = text;
-    el.compactTimer.textContent = text;
+    el.timer.textContent = formatDuration(payload.seconds);
+    updateWidgetTime(payload.seconds);
+    el.widgetSize.textContent = formatSize(payload.bytes);
+  } else if (event === 'countdown') {
+    showCountdown(payload);
   } else if (event === 'progress') {
     if (payload.step) el.progressStep.textContent = payload.step;
     if (payload.value !== null && payload.value !== undefined) {
@@ -115,6 +149,87 @@ window.luminaEvent = function (message) {
     showResult(payload);
   }
 };
+
+/* ---------- Forme d'onde du widget ----------
+ *
+ * IMPORTANT : ce trace ne mesure PAS le niveau du microphone. Le moteur
+ * n'expose pas le niveau audio en temps reel, et afficher une amplitude
+ * inventee ferait croire que le son est capte alors que le micro peut
+ * etre coupe ou defaillant. C'est un rythme visuel qui signale « la
+ * capture avance », rien d'autre.
+ *
+ * Le trace defile a gauche, comme une bande qui se deroule. Il s'arrete
+ * completement hors enregistrement : aucune animation ne doit tourner
+ * pendant que l'utilisateur ne regarde pas.
+ */
+
+let waveFrame = null;
+let waveOffset = 0;
+
+function drawWave() {
+  const canvas = el.widgetWave;
+  const ctx = canvas.getContext('2d');
+  const { width, height } = canvas;
+  const middle = height / 2;
+  const step = 7;
+  const bars = Math.ceil(width / step) + 2;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+
+  for (let i = 0; i < bars; i += 1) {
+    const x = i * step - (waveOffset % step);
+    const seed = i + Math.floor(waveOffset / step);
+    // Somme de sinusoides dephasees : irregulier a l'oeil, sans hasard,
+    // donc stable d'une image a l'autre quand la bande defile
+    const amplitude =
+      Math.abs(Math.sin(seed * 0.7)) * 0.45 +
+      Math.abs(Math.sin(seed * 0.31 + 1.2)) * 0.35 +
+      Math.abs(Math.sin(seed * 1.9 + 0.4)) * 0.2;
+    const barHeight = Math.max(2, amplitude * height * 0.78);
+    ctx.fillRect(x, middle - barHeight / 2, 2.5, barHeight);
+  }
+}
+
+function stepWave() {
+  waveOffset += 0.55;
+  drawWave();
+  waveFrame = requestAnimationFrame(stepWave);
+}
+
+function startWave() {
+  if (waveFrame !== null) return;
+  // Respecter le reglage systeme : une animation permanente est un
+  // probleme reel pour qui souffre de troubles vestibulaires
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    drawWave();
+    return;
+  }
+  waveFrame = requestAnimationFrame(stepWave);
+}
+
+function stopWave() {
+  if (waveFrame !== null) {
+    cancelAnimationFrame(waveFrame);
+    waveFrame = null;
+  }
+}
+
+// La fenetre masquee continue de consommer si on ne l'arrete pas
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopWave();
+  else if (state === 'recording') startWave();
+});
+
+/* Relance l'animation a chaque chiffre : sans cela le navigateur
+ * reutilise l'animation en cours et le rythme du decompte disparait. */
+function showCountdown(value) {
+  const node = el.countdownValue;
+  node.textContent = value > 0 ? value : '';
+  node.style.animation = 'none';
+  void node.offsetWidth;     // force le recalcul
+  node.style.animation = '';
+}
 
 function showResult(payload) {
   const failures = (payload.results || []).filter((r) => !r.success);
@@ -236,7 +351,7 @@ function wire() {
     }
   });
 
-  $('compact-stop').addEventListener('click', () => call('toggle_recording'));
+  $('widget-stop').addEventListener('click', () => call('toggle_recording'));
   $('min').addEventListener('click', () => call('minimize'));
   $('close').addEventListener('click', () => call('close'));
   $('open-folder').addEventListener('click', () => call('open_output_folder'));

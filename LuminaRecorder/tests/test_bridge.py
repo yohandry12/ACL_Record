@@ -71,9 +71,17 @@ class FakeWindow:
 
     def __init__(self):
         self.calls = []
+        self.size = None
+        self.on_top = False
 
     def evaluate_js(self, script):
         self.calls.append(script)
+
+    def resize(self, width, height):
+        self.size = (width, height)
+
+    def move(self, x, y):
+        self.position = (x, y)
 
     def events_named(self, name):
         return [c for c in self.calls if f'"event": "{name}"' in c]
@@ -161,8 +169,16 @@ def test_reglage_inconnu_est_refuse_explicitement(bridge):
 
 # --- cycle d'enregistrement ---
 
-def test_demarrage_puis_arret(bridge):
-    assert bridge.start_recording()['ok'] is True
+def demarrer_sans_attendre(bridge, monkeypatch):
+    """Lance la capture en sautant le decompte de 3 s."""
+    monkeypatch.setattr(bridge, 'COUNTDOWN_SECONDS', 0, raising=False)
+    monkeypatch.setattr(bridge_module.time, 'sleep', lambda s: None)
+    bridge.start_recording()
+    attendre(lambda: bridge.state == RECORDING)
+
+
+def test_demarrage_puis_arret(bridge, monkeypatch):
+    demarrer_sans_attendre(bridge, monkeypatch)
     assert bridge.state == RECORDING
     assert bridge.recorder.started_with.endswith('.mp4')
 
@@ -184,9 +200,11 @@ def test_arret_sans_enregistrement_refuse(bridge):
     assert result['ok'] is False
 
 
-def test_toggle_alterne_les_etats(bridge):
+def test_toggle_alterne_les_etats(bridge, monkeypatch):
+    monkeypatch.setattr(bridge, 'COUNTDOWN_SECONDS', 0, raising=False)
+    monkeypatch.setattr(bridge_module.time, 'sleep', lambda s: None)
     bridge.toggle_recording()
-    assert bridge.state == RECORDING
+    assert attendre(lambda: bridge.state == RECORDING)
 
     bridge.toggle_recording()
     assert attendre(lambda: bridge.state == IDLE)
@@ -218,22 +236,22 @@ def test_ffmpeg_absent_empeche_de_demarrer(bridge):
     assert bridge.state == IDLE
 
 
-def test_moteur_qui_refuse_revient_au_repos(bridge):
+def test_moteur_qui_refuse_revient_au_repos(bridge, monkeypatch):
     class RefuseRecorder(FakeRecorder):
         def start_recording(self, path):
             return False
     bridge._recorder_factory = RefuseRecorder
 
-    result = bridge.start_recording()
+    demarrer_sans_attendre(bridge, monkeypatch)
 
-    assert result['ok'] is False
-    assert bridge.state == IDLE
+    # Le moteur refuse APRES le decompte : on revient au repos
+    assert attendre(lambda: bridge.state == IDLE)
 
 
-def test_encodage_recoit_le_fps_reel(bridge):
+def test_encodage_recoit_le_fps_reel(bridge, monkeypatch):
     """Le fps nominal donnerait une vidéo accélérée et désynchronisée du
     son : c'est le fps mesuré qui doit être encodé."""
-    bridge.start_recording()
+    demarrer_sans_attendre(bridge, monkeypatch)
     bridge.recorder.actual_fps = 11.4
     bridge.stop_recording()
 
@@ -242,10 +260,10 @@ def test_encodage_recoit_le_fps_reel(bridge):
     assert FakeEncoder.instances[-1].calls[0]['fps'] == 11
 
 
-def test_encodage_sans_gain_supplementaire(bridge):
+def test_encodage_sans_gain_supplementaire(bridge, monkeypatch):
     """Le gain est déjà appliqué à la capture : le réappliquer ici
     donnerait un son deux fois plus faible."""
-    bridge.start_recording()
+    demarrer_sans_attendre(bridge, monkeypatch)
     bridge.stop_recording()
 
     assert attendre(lambda: FakeEncoder.instances
@@ -322,3 +340,65 @@ def test_fermeture_libere_le_raccourci_et_la_capture(bridge):
 
     assert bridge.hotkey.stopped is True
     assert bridge.recorder.is_recording is False
+
+
+# --- décompte avant capture ---
+
+def test_le_decompte_precede_la_capture(bridge):
+    """L'utilisateur doit savoir quand la capture commence : rien n'est
+    enregistré tant que le décompte tourne."""
+    result = bridge.start_recording()
+
+    assert result['pending'] is True
+    assert result['countdown'] == 3
+    assert bridge.state == PENDING
+    assert bridge.recorder.started_with is None
+
+
+def test_le_decompte_est_annonce_a_la_page(bridge, monkeypatch):
+    monkeypatch.setattr(bridge_module.time, 'sleep', lambda s: None)
+
+    bridge.start_recording()
+    attendre(lambda: bridge.state == RECORDING)
+
+    envoyes = bridge.window.events_named('countdown')
+    # 3, 2, 1 puis 0 : le dernier chiffre ne doit pas sauter
+    assert len(envoyes) == 4
+
+
+def test_annulation_pendant_le_decompte_ne_capture_rien(bridge):
+    bridge.start_recording()
+
+    result = bridge.stop_recording()
+
+    assert result['cancelled'] is True
+    assert bridge.state == IDLE
+    assert bridge.recorder.started_with is None
+
+
+def test_le_widget_apparait_des_le_decompte(bridge):
+    """Basculer au démarrage exact de la capture ferait sauter la
+    fenêtre dans l'enregistrement lui-même."""
+    bridge.start_recording()
+
+    assert bridge.window.size == LuminaBridge.COMPACT_SIZE
+
+
+def test_le_tick_porte_duree_et_taille(bridge, monkeypatch):
+    """Le widget affiche la taille du fichier : elle doit accompagner
+    chaque battement, pas seulement la durée."""
+    demarrer_sans_attendre(bridge, monkeypatch)
+
+    assert attendre(lambda: bridge.window.events_named('tick'))
+    envoye = bridge.window.events_named('tick')[0]
+    assert '"seconds"' in envoye
+    assert '"bytes"' in envoye
+
+
+def test_taille_nulle_si_le_fichier_n_existe_pas_encore(bridge):
+    """À la première seconde, le fichier brut n'est pas encore créé :
+    cela ne doit pas lever."""
+    bridge.recorder = FakeRecorder()
+    bridge.recorder._raw_video_path = "chemin/inexistant.avi"
+
+    assert bridge._recorded_bytes() == 0

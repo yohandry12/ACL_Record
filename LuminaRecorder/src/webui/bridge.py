@@ -61,8 +61,12 @@ class LuminaBridge:
     un enregistrement en cours.
     """
 
-    # Taille de la barre compacte affichée pendant la capture
-    COMPACT_SIZE = (330, 58)
+    # Widget affiché pendant la capture (voir assets/Records_examples/
+    # record.webp) : durée, taille du fichier, arrêt.
+    COMPACT_SIZE = (340, 148)
+
+    # Décompte avant le début réel de la capture
+    COUNTDOWN_SECONDS = 3
 
     @staticmethod
     def full_size() -> tuple:
@@ -155,13 +159,17 @@ class LuminaBridge:
         """
         if self.window is None:
             return
+        # Le décompte s'affiche déjà dans le widget : basculer dès
+        # « pending » évite un saut de fenêtre au moment précis où la
+        # capture démarre, qui serait visible dans l'enregistrement.
+        compact_states = (PENDING, RECORDING)
         try:
-            if state == RECORDING and not self._compact:
+            if state in compact_states and not self._compact:
                 self._compact = True
                 self.window.on_top = True
                 self.window.resize(*self.COMPACT_SIZE)
                 self.window.move(*self._compact_position())
-            elif state != RECORDING and self._compact:
+            elif state not in compact_states and self._compact:
                 self._compact = False
                 self.window.on_top = False
                 self.window.resize(*self.full_size())
@@ -375,22 +383,30 @@ class LuminaBridge:
         except Exception as e:
             return {'ok': False, 'error': f"Préparation impossible : {e}"}
 
-        # Smart Focus : la page se réduit et laisse 2 s à l'utilisateur
-        # pour cliquer sur sa fenêtre cible, sinon Lumina se filmerait
-        # elle-même — elle est au premier plan au moment du clic
-        if self.config.get_bool('recording', 'smart_focus', fallback=False) \
-                and smart_focus_is_available():
-            self._set_state(PENDING)
-            threading.Thread(target=self._deferred_start, daemon=True).start()
-            return {'ok': True, 'pending': True}
+        # Décompte avant capture : l'utilisateur voit 3, 2, 1 et sait
+        # exactement quand l'enregistrement commence. Il sert aussi au
+        # Smart Focus, qui a besoin de ce délai pour que l'utilisateur
+        # clique sur sa fenêtre cible — sinon Lumina se filmerait
+        # elle-même, étant au premier plan au moment du clic. Un seul
+        # délai pour les deux besoins plutôt que deux qui s'additionnent.
+        self._set_state(PENDING)
+        threading.Thread(target=self._countdown, daemon=True).start()
+        return {'ok': True, 'pending': True,
+                'countdown': self.COUNTDOWN_SECONDS}
 
-        return self._launch()
+    def _countdown(self):
+        """Égrène le décompte puis démarre réellement la capture."""
+        for remaining in range(self.COUNTDOWN_SECONDS, 0, -1):
+            if self.state != PENDING:
+                return          # annulé entre-temps
+            self.emit('countdown', remaining)
+            time.sleep(1.0)
 
-    def _deferred_start(self):
-        """Attend la bascule du Smart Focus puis démarre réellement."""
-        time.sleep(2.0)
         if self.state != PENDING:
-            return          # annulé entre-temps
+            return
+        # 0 affiché brièvement : sans cela le dernier chiffre saute
+        self.emit('countdown', 0)
+
         result = self._launch()
         if not result.get('ok'):
             self.emit('error', result.get('error', "Échec du démarrage"))
@@ -409,10 +425,27 @@ class LuminaBridge:
         self._start_timer()
         return {'ok': True}
 
+    def _recorded_bytes(self) -> int:
+        """Taille du fichier brut en cours d'écriture.
+
+        Le widget l'affiche pour que l'utilisateur voie la capture
+        progresser réellement, et repère un enregistrement qui grossit
+        trop vite avant de remplir son disque.
+        """
+        path = getattr(self.recorder, '_raw_video_path', '') or ''
+        try:
+            return os.path.getsize(path) if path else 0
+        except OSError:
+            # Le fichier n'existe pas encore à la première seconde
+            return 0
+
     def _start_timer(self):
         def run():
             while self.state == RECORDING:
-                self.emit('tick', int(time.time() - self._start_time))
+                self.emit('tick', {
+                    'seconds': int(time.time() - self._start_time),
+                    'bytes': self._recorded_bytes(),
+                })
                 time.sleep(1.0)
         self._timer_thread = threading.Thread(target=run, daemon=True)
         self._timer_thread.start()

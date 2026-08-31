@@ -7,11 +7,32 @@
 </head>
 <body data-state="idle">
 
-<!-- Barre compacte : seule chose visible pendant l'enregistrement -->
-<div class="compact-bar">
-  <span class="dot"></span>
-  <span class="timer" id="compact-timer">00:00:00</span>
-  <button id="compact-stop">Arrêter</button>
+<!-- Widget d'enregistrement : seule chose visible pendant la capture.
+     Composition reprise de assets/Records_examples/record.webp —
+     durée dominante, taille du fichier, format, arrêt, forme d'onde. -->
+<div class="widget">
+  <div class="widget-top">
+    <span class="widget-state"><span class="dot"></span><span id="widget-label">Enregistrement</span></span>
+    <span class="widget-size" id="widget-size">0 Mo</span>
+  </div>
+
+  <div class="widget-time">
+    <span id="widget-timer">00:00</span><sup id="widget-hours"></sup>
+  </div>
+
+  <div class="widget-bottom">
+    <span class="widget-format" id="widget-format">MP4</span>
+    <div class="widget-actions">
+      <button id="widget-stop" title="Arrêter (F9)" aria-label="Arrêter">
+        <svg width="13" height="13" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <canvas class="widget-wave" id="widget-wave" width="600" height="72"></canvas>
+
+  <!-- Décompte : recouvre le widget avant le début réel de la capture -->
+  <div class="countdown" id="countdown"><span id="countdown-value">3</span></div>
 </div>
 
 <header class="titlebar">
