@@ -44,3 +44,5 @@ coverage/
 .pytest_cache/
 __pycache__/
 ```
+# Fichiers temporaires d'enregistrement Lumina
+temp/
