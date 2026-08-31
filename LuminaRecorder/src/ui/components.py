@@ -41,11 +41,27 @@ class StyledButton(tk.Button):
         self.bind("<Enter>", self._on_hover)
         self.bind("<Leave>", self._on_leave)
         
+    def config(self, cnf=None, **kwargs):
+        # bg_color/hover_color ne sont pas des options tkinter : on les
+        # traduit et on met à jour l'état hover pour que _on_leave ne
+        # restaure pas l'ancienne couleur
+        bg_color = kwargs.pop('bg_color', None)
+        hover_color = kwargs.pop('hover_color', None)
+        if bg_color is not None:
+            self.default_bg = bg_color
+            kwargs['bg'] = bg_color
+        if hover_color is not None:
+            self.hover_bg = hover_color
+            kwargs['activebackground'] = hover_color
+        return super().config(cnf, **kwargs)
+
+    configure = config
+
     def _on_hover(self, event):
-        self.config(bg=self.hover_bg)
-        
+        super().config(bg=self.hover_bg)
+
     def _on_leave(self, event):
-        self.config(bg=self.default_bg)
+        super().config(bg=self.default_bg)
 
 
 class ConfigCard(tk.LabelFrame):
