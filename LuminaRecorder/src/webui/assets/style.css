@@ -502,27 +502,37 @@ body.compact .widget {
 
 .widget-actions { display: flex; gap: 8px; }
 
+/* Fond sombre opaque et bordure claire : le bouton se détache de la
+   bande d'onde rouge sur laquelle il repose. */
 .widget-actions button {
   width: 34px; height: 34px;
   display: grid; place-items: center;
   border-radius: 50%;
-  border: 1px solid var(--border-bright);
-  background: var(--bg-elevated);
-  color: var(--text);
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  background: #0D0E11;
+  color: #fff;
   cursor: pointer;
   transition: background 140ms var(--ease), border-color 140ms var(--ease),
               transform 140ms var(--ease);
 }
+/* Inversion au survol plutôt que passage au rouge : le bouton repose
+   sur la bande rouge, il y disparaîtrait. */
 .widget-actions button:hover {
-  background: var(--rec);
-  border-color: var(--rec);
+  background: #fff;
+  border-color: #fff;
+  color: #0D0E11;
   transform: scale(1.06);
 }
 .widget-actions button:active { transform: scale(0.96); }
 
-/* Forme d'onde : bande pleine en bas, comme le modèle */
+/* Forme d'onde : bande pleine en bas, comme le modèle.
+   z-index 0 explicite : positionnée après .widget-bottom dans le
+   document, elle recouvrait sinon le bouton d'arrêt d'un rectangle
+   rouge opaque. Le clic passait (pointer-events: none) mais le bouton
+   était invisible, donc introuvable. */
 .widget-wave {
   position: absolute;
+  z-index: 0;
   left: 10px; right: 10px; bottom: 10px;
   width: calc(100% - 20px);
   height: 36px;
@@ -530,6 +540,11 @@ body.compact .widget {
   background: var(--rec);
   pointer-events: none;
 }
+
+/* Le contenu du widget se pose au-dessus de la bande d'onde */
+.widget-top,
+.widget-time,
+.widget-bottom { position: relative; z-index: 1; }
 
 /* ---------- Décompte ---------- */
 

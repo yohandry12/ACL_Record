@@ -344,32 +344,90 @@ class RecorderCore:
             except Exception:
                 pass
 
+    # Nombre d'échecs de capture consécutifs tolérés avant d'abandonner.
+    # BitBlt échoue temporairement dans des situations courantes et
+    # passagères : session en cours de verrouillage, changement de bureau,
+    # bascule d'une application en plein écran exclusif, reprise après
+    # veille de l'écran. À 30 im/s, 60 échecs valent 2 secondes.
+    MAX_ECHECS_CAPTURE = 60
+
+    def _open_screen_capture(self):
+        """Ouvre une session de capture d'écran.
+
+        Point d'extension : les tests la remplacent par un double pour
+        simuler un écran défaillant, sans toucher au vrai GDI.
+        """
+        return mss.mss()
+
     def _capture_screen(self):
-        """Boucle de capture d'écran — écriture disque en continu."""
+        """Boucle de capture d'écran — écriture disque en continu.
+
+        L'instance mss est créée ici, dans le thread qui s'en sert : sous
+        Windows elle porte un contexte de périphérique GDI, et le lier au
+        thread qui l'utilise évite tout partage entre threads. L'objet
+        self.sct de l'initialisation ne sert qu'à lister les moniteurs.
+
+        Une frame ratée ne met pas fin à l'enregistrement. Auparavant la
+        première exception coupait tout : un échec passager de BitBlt
+        (verrouillage de session, application plein écran exclusif,
+        écran en veille) suffisait à perdre l'enregistrement entier, et
+        c'est justement le moment où l'utilisateur ne regarde pas.
+        """
         frame_interval = 1.0 / self.fps
 
-        while self.is_recording:
-            start_frame_time = time.time()
+        try:
+            sct = self._open_screen_capture()
+        except Exception as e:
+            self.is_recording = False
+            print(f"[Lumina] Capture d'écran indisponible: {e}")
+            if self.on_capture_error:
+                self.on_capture_error(str(e))
+            return
 
+        echecs = 0
+        derniere_erreur = ""
+        try:
+            while self.is_recording:
+                start_frame_time = time.time()
+
+                try:
+                    # Smart Focus actif : la zone suit la fenêtre verrouillée
+                    region = (self._focus_tracker.current_region()
+                              if self._focus_tracker else self.monitor)
+                    screenshot = sct.grab(region)
+                    img = np.array(screenshot)
+                    img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+                    self._write_frame(img_bgr)
+                    echecs = 0
+                except Exception as e:
+                    echecs += 1
+                    derniere_erreur = str(e)
+                    if echecs == 1:
+                        # Une seule trace par épisode : à 30 im/s une
+                        # panne durable noierait la console
+                        print(f"[Lumina] Frame perdue ({e}), on continue")
+                    if echecs >= self.MAX_ECHECS_CAPTURE:
+                        self.is_recording = False
+                        msg = (f"Capture d'écran interrompue après "
+                               f"{echecs} échecs : {derniere_erreur}")
+                        print(f"[Lumina] {msg}")
+                        if self.on_capture_error:
+                            self.on_capture_error(msg)
+                        break
+                    # Laisse passer l'incident avant de réessayer
+                    time.sleep(frame_interval)
+                    continue
+
+                elapsed = time.time() - start_frame_time
+                sleep_time = max(0, frame_interval - elapsed)
+                time.sleep(sleep_time)
+        finally:
+            # Libère le contexte GDI dans le thread qui l'a créé
             try:
-                # Smart Focus actif : la zone suit la fenêtre verrouillée
-                region = (self._focus_tracker.current_region()
-                          if self._focus_tracker else self.monitor)
-                screenshot = self.sct.grab(region)
-                img = np.array(screenshot)
-                img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-
-                self._write_frame(img_bgr)
-            except Exception as e:
-                self.is_recording = False
-                print(f"[Lumina] Erreur capture écran: {e}")
-                if self.on_capture_error:
-                    self.on_capture_error(str(e))
-                break
-
-            elapsed = time.time() - start_frame_time
-            sleep_time = max(0, frame_interval - elapsed)
-            time.sleep(sleep_time)
+                sct.close()
+            except Exception:
+                pass
     
     def _apply_gain(self, data: bytes) -> bytes:
         """Applique le gain audio à un chunk PCM 16 bits"""

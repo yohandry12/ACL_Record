@@ -58,16 +58,93 @@ def test_stop_without_frames_returns_empty(tmp_path):
     assert audio_path == ""
 
 
+class EcranSimule:
+    """Écran de test : échoue les `echecs` premiers appels, puis rend une
+    image. Compte les appels pour vérifier les tentatives réelles."""
+
+    def __init__(self, echecs=0, erreur="écran perdu", h=120, w=160):
+        self.echecs = echecs
+        self.erreur = erreur
+        self.appels = 0
+        self._image = np.zeros((h, w, 4), dtype=np.uint8)
+        self.ferme = False
+
+    def grab(self, region):
+        self.appels += 1
+        if self.appels <= self.echecs:
+            raise RuntimeError(self.erreur)
+        return self._image
+
+    def close(self):
+        self.ferme = True
+
+
+def _brancher_ecran(rec, ecran):
+    rec._open_screen_capture = lambda: ecran
+
+
 def test_capture_error_stops_recording_and_notifies(tmp_path):
+    """Une panne durable finit par arrêter l'enregistrement et prévenir."""
     errors = []
     rec = RecorderCore(resolution="160x120", fps=10, audio_enabled=False,
                        on_capture_error=errors.append)
     rec.is_recording = True
     rec._temp_dir = str(tmp_path)
-    rec.sct = type("BrokenSct", (), {"grab": lambda self, m: (_ for _ in ()).throw(RuntimeError("écran perdu"))})()
-    rec._capture_screen()  # appel direct, synchrone
+    _brancher_ecran(rec, EcranSimule(echecs=10 ** 6))
+    rec.MAX_ECHECS_CAPTURE = 3      # évite d'attendre 60 échecs en test
+
+    rec._capture_screen()           # appel direct, synchrone
+
     assert rec.is_recording is False
     assert errors and "écran perdu" in errors[0]
+
+
+def test_frame_ratee_n_interrompt_pas_l_enregistrement(tmp_path):
+    """Constaté en usage réel : une seule erreur BitBlt tuait tout
+    l'enregistrement. Ces échecs sont passagers (verrouillage de session,
+    application en plein écran exclusif, écran en veille) — perdre
+    quelques images vaut mieux que perdre la capture entière."""
+    errors = []
+    rec = RecorderCore(resolution="160x120", fps=60, audio_enabled=False,
+                       on_capture_error=errors.append)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    ecran = EcranSimule(echecs=5)
+    _brancher_ecran(rec, ecran)
+
+    def arreter_apres_quelques_images():
+        while rec._frame_count < 3:
+            pass
+        rec.is_recording = False
+
+    t = threading.Thread(target=arreter_apres_quelques_images, daemon=True)
+    t.start()
+    rec._capture_screen()
+    t.join(timeout=5)
+
+    assert rec._frame_count >= 3        # a repris après les échecs
+    assert errors == []                 # aucune alerte pour un incident passager
+
+
+def test_session_de_capture_fermee_a_la_fin(tmp_path):
+    """Le contexte GDI est libéré dans le thread qui l'a ouvert."""
+    rec = RecorderCore(resolution="160x120", fps=60, audio_enabled=False)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    ecran = EcranSimule()
+    _brancher_ecran(rec, ecran)
+
+    def arreter():
+        while rec._frame_count < 2:
+            pass
+        rec.is_recording = False
+
+    t = threading.Thread(target=arreter, daemon=True)
+    t.start()
+    rec._capture_screen()
+    t.join(timeout=5)
+
+    assert ecran.ferme is True
 
 
 def test_start_recording_uses_fresh_audio_ready_event(tmp_path, monkeypatch):
