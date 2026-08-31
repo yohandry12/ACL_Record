@@ -45,6 +45,14 @@ class SubtitlesProcessor(PostProcessor):
             return PostProcessResult(name=self.name, success=False,
                                      error="Échec de la transcription")
 
+        # Transcription réussie mais vide : dire la vérité. L'ancien
+        # message « Échec de l'export SRT » laissait croire à une panne
+        # alors que Whisper n'a simplement entendu aucune parole.
+        if not getattr(transcriber, 'segments', None):
+            return PostProcessResult(
+                name=self.name, success=False,
+                error="Aucune parole détectée dans l'enregistrement")
+
         srt_path = str(Path(video_path).with_suffix('.srt'))
         if not transcriber.export_srt(srt_path):
             return PostProcessResult(name=self.name, success=False,

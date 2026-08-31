@@ -97,6 +97,21 @@ class WhisperTranscriber:
             print("  Ou: pip install faster-whisper (recommandé)")
             self.is_available = False
     
+    def _collect_segments(self, segments, info, progress_callback=None):
+        """Range les segments Whisper dans self.segments."""
+        self.segments = []
+        for i, segment in enumerate(segments):
+            self.segments.append(SubtitleSegment(
+                index=i,
+                start_time=segment.start,
+                end_time=segment.end,
+                text=segment.text.strip(),
+                language=info.language
+            ))
+            if progress_callback:
+                # Progression approximative
+                progress_callback(min(0.9, 0.2 + (i * 0.01)))
+
     def transcribe(self, audio_path: str, progress_callback=None) -> bool:
         """
         Transcrit un fichier audio en sous-titres
@@ -128,20 +143,23 @@ class WhisperTranscriber:
                     beam_size=5,
                     vad_filter=True  # Détection de voix active
                 )
-                
-                self.segments = []
-                for i, segment in enumerate(segments):
-                    self.segments.append(SubtitleSegment(
-                        index=i,
-                        start_time=segment.start,
-                        end_time=segment.end,
-                        text=segment.text.strip(),
-                        language=info.language
-                    ))
-                    
-                    if progress_callback:
-                        # Progression approximative
-                        progress_callback(min(0.9, 0.2 + (i * 0.01)))
+                self._collect_segments(segments, info, progress_callback)
+
+                if not self.segments:
+                    # Constaté sur un enregistrement réel : une voix brève
+                    # sur fond sonore, et le VAD écarte TOUT l'audio ;
+                    # l'auto-détection de langue, privée de parole, se
+                    # trompe et il ne reste aucun segment. Une seconde
+                    # passe sans VAD rattrape la parole réellement
+                    # présente ; si elle ne trouve rien non plus, il n'y a
+                    # vraiment rien à sous-titrer.
+                    segments, info = self.model.transcribe(
+                        audio_path,
+                        language=self.language,
+                        beam_size=5,
+                        vad_filter=False
+                    )
+                    self._collect_segments(segments, info, progress_callback)
             
             elif self.whisper_lib == "whisper":
                 result = self.model.transcribe(
