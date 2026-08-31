@@ -47,6 +47,7 @@ from services.ai_provider import (DEFAULT_PROVIDER, build_engine,
                                   sends_data_offsite)
 from services.ocr_service import ocr_is_available
 from utils.config_manager import ConfigManager
+from version import __version__ as APP_VERSION
 
 
 # États possibles de l'application, tels que la page les comprend
@@ -300,6 +301,7 @@ class LuminaBridge:
 
         return {
             'state': self.state,
+            'version': APP_VERSION,
             'profile': getattr(self.analyzer.profile, 'value', 'inconnu'),
             'recommended': self.recommended,
             'resolution': self._resolution(),

@@ -23,6 +23,18 @@ echo [INFO] Python détecté...
 python --version
 echo.
 
+REM Version unique, lue depuis src\version.py : elle nomme le setup et
+REM alimente le registre Windows via /DAPP_VERSION plus bas
+set APP_VERSION=
+for /f tokens^=2^ delims^=^" %%v in ('findstr /C:"__version__" src\version.py') do set APP_VERSION=%%v
+if "%APP_VERSION%"=="" (
+    echo [ERREUR] Version introuvable dans src\version.py
+    pause
+    exit /b 1
+)
+echo [INFO] Version : %APP_VERSION%
+echo.
+
 REM Nettoyage des anciens builds
 echo [NETTOYAGE] Suppression des anciens builds...
 if exist "dist" rmdir /s /q dist
@@ -110,6 +122,28 @@ copy dist\LuminaRecorder.exe dist_installer\ >nul
 copy README.md dist_installer\ >nul
 copy LICENSE dist_installer\ >nul 2>nul
 
+REM Compilation du setup NSIS si makensis est disponible.
+REM /DAPP_VERSION transmet la version de src\version.py : le .nsi ne
+REM porte qu'un filet de secours, jamais la vraie valeur.
+set MAKENSIS=
+if exist "%ProgramFiles(x86)%\NSIS\makensis.exe" set MAKENSIS="%ProgramFiles(x86)%\NSIS\makensis.exe"
+if exist "%ProgramFiles%\NSIS\makensis.exe" set MAKENSIS="%ProgramFiles%\NSIS\makensis.exe"
+
+if defined MAKENSIS (
+    echo [INSTALLATEUR] Compilation du setup NSIS...
+    %MAKENSIS% /DAPP_VERSION=%APP_VERSION% setup_installer.nsi
+    if errorlevel 1 (
+        echo [ERREUR] La compilation NSIS a échoué.
+        pause
+        exit /b 1
+    )
+    echo [OK] Setup généré : dist_installer\Lumina_Setup_%APP_VERSION%.exe
+) else (
+    echo [NOTE] NSIS introuvable : setup non généré.
+    echo Installez NSIS puis lancez :
+    echo   makensis /DAPP_VERSION=%APP_VERSION% setup_installer.nsi
+)
+
 echo.
 echo ╔═══════════════════════════════════════════════╗
 echo ║           BUILD TERMINE AVEC SUCCES           ║
@@ -117,10 +151,8 @@ echo ╚════════════════════════
 echo.
 echo Fichiers générés :
 echo   - dist\LuminaRecorder.exe (exécutable portable)
-echo   - dist_installer\ (fichiers pour NSIS)
-echo.
-echo Prochaine étape : Utiliser NSIS pour créer Setup.exe
-echo Commande: makensis setup_installer.nsi
+echo   - dist_installer\Lumina_Setup_%APP_VERSION%.exe (installateur)
+echo Relancer ce setup sur un poste déjà équipé propose la mise à jour.
 echo.
 
 pause
