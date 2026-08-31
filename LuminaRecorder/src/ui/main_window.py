@@ -412,7 +412,12 @@ Vous pouvez les modifier manuellement si nécessaire.
                 else:
                     self.status_label.config(text="✗ Erreur d'encodage",
                                             fg=self.colors['danger'])
-                    
+                    if preserved_audio and os.path.exists(preserved_audio):
+                        try:
+                            os.remove(preserved_audio)
+                        except OSError:
+                            pass
+
         # Reset de l'état
         self.is_recording = False
         self.record_btn.config(text="● COMMENCER L'ENREGISTREMENT",
@@ -430,6 +435,7 @@ Vous pouvez les modifier manuellement si nécessaire.
         progress_win.geometry("400x120")
         progress_win.transient(self.root)
         progress_win.grab_set()
+        progress_win.protocol("WM_DELETE_WINDOW", lambda: None)
 
         step_label = tk.Label(progress_win, text="Préparation...",
                               font=("Segoe UI", 10))
@@ -460,7 +466,10 @@ Vous pouvez les modifier manuellement si nécessaire.
 
     def _show_postprocess_summary(self, video_path, results, progress_win):
         """Résumé final : la vidéo est TOUJOURS annoncée comme sauvegardée."""
-        progress_win.destroy()
+        try:
+            progress_win.destroy()
+        except tk.TclError:
+            pass
         lines = [f"✓ Vidéo sauvegardée :\n{video_path}\n"]
         for r in results:
             if r.success and r.output_path:
