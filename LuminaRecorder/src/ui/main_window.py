@@ -634,6 +634,9 @@ Vous pouvez les modifier manuellement si nécessaire.
                 text=f"Étape : {name}..."))
 
         def worker():
+            # Initialisé avant le try : le résumé doit s'afficher (et la
+            # fenêtre de progression se fermer) même si le traitement lève
+            results = []
             try:
                 results = run_postprocessors(processors, video_path,
                                              audio_path, on_progress,
@@ -647,8 +650,8 @@ Vous pouvez les modifier manuellement si nécessaire.
                         os.remove(audio_path)  # copie .keep.wav temporaire
                     except OSError:
                         pass
-            self.root.after(0, lambda: self._show_postprocess_summary(
-                video_path, results, progress_win))
+                self.root.after(0, lambda: self._show_postprocess_summary(
+                    video_path, results, progress_win))
 
         threading.Thread(target=worker, daemon=True).start()
 
