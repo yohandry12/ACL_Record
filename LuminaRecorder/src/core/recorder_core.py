@@ -110,6 +110,8 @@ class RecorderCore:
         self.is_recording = False
         self.recording_thread = None
         self.audio_thread = None
+        # Signalé au 1er chunk audio : synchronise le départ des 2 pistes
+        self._audio_ready = threading.Event()
 
         self.audio_frames = []
         self._writer = None            # cv2.VideoWriter, ouvert à la 1re frame
@@ -160,14 +162,21 @@ class RecorderCore:
         print(f"[Lumina] Démarrage de l'enregistrement : "
               f"{self.resolution} @ {self.fps} FPS")
 
-        self.recording_thread = threading.Thread(target=self._capture_screen)
-        self.recording_thread.daemon = True
-        self.recording_thread.start()
-
+        # L'audio démarre en premier : l'ouverture de PortAudio prend
+        # ~1 s, pendant laquelle la vidéo tournerait sans son. On attend
+        # le premier chunk pour que les deux pistes commencent ensemble,
+        # sinon -shortest tronque la vidéo de cette seconde.
         if self.audio_enabled:
+            self._audio_ready.clear()
             self.audio_thread = threading.Thread(target=self._capture_audio)
             self.audio_thread.daemon = True
             self.audio_thread.start()
+            if not self._audio_ready.wait(timeout=5.0):
+                print("[Lumina] Audio lent à démarrer, capture vidéo lancée")
+
+        self.recording_thread = threading.Thread(target=self._capture_screen)
+        self.recording_thread.daemon = True
+        self.recording_thread.start()
 
         return True
 
@@ -238,28 +247,43 @@ class RecorderCore:
             sleep_time = max(0, frame_interval - elapsed)
             time.sleep(sleep_time)
     
+    def _apply_gain(self, data: bytes) -> bytes:
+        """Applique le gain audio à un chunk PCM 16 bits"""
+        if self.audio_gain == 1.0:
+            return data
+        audio_array = np.frombuffer(data, dtype=np.int16)
+        audio_array = np.clip(audio_array * self.audio_gain,
+                              -32768, 32767).astype(np.int16)
+        return audio_array.tobytes()
+
     def _capture_audio(self):
-        """Boucle de capture audio"""
+        """Capture audio en mode callback.
+
+        PortAudio pousse les chunks depuis son propre thread C : la capture
+        ne dépend plus du GIL, que le thread vidéo monopolise. En mode
+        bloquant, jusqu'à 75 % de l'audio était perdu par dépassement de
+        buffer pendant que la vidéo occupait l'interpréteur.
+        """
         p = pyaudio.PyAudio()
-        
+
+        def on_chunk(in_data, frame_count, time_info, status):
+            self.audio_frames.append(self._apply_gain(in_data))
+            self._audio_ready.set()   # débloque le démarrage de la vidéo
+            flag = pyaudio.paContinue if self.is_recording else pyaudio.paComplete
+            return (None, flag)
+
         try:
             stream = p.open(format=self.audio_format,
                             channels=self.channels,
                             rate=self.sample_rate,
                             input=True,
                             input_device_index=self.audio_device_index,
-                            frames_per_buffer=self.chunk_size)
-            
-            while self.is_recording:
-                data = stream.read(self.chunk_size, exception_on_overflow=False)
-                
-                # Application du gain audio
-                if self.audio_gain != 1.0:
-                    audio_array = np.frombuffer(data, dtype=np.int16)
-                    audio_array = np.clip(audio_array * self.audio_gain, -32768, 32767).astype(np.int16)
-                    data = audio_array.tobytes()
+                            frames_per_buffer=self.chunk_size,
+                            stream_callback=on_chunk)
 
-                self.audio_frames.append(data)
+            stream.start_stream()
+            while self.is_recording and stream.is_active():
+                time.sleep(0.05)
                 
             stream.stop_stream()
             stream.close()
@@ -270,6 +294,8 @@ class RecorderCore:
             if self.on_audio_error:
                 self.on_audio_error(str(e))
         finally:
+            # Ne jamais laisser la vidéo attendre un audio qui ne viendra pas
+            self._audio_ready.set()
             p.terminate()
     
     def _save_raw_audio(self) -> str:

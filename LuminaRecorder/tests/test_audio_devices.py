@@ -1,5 +1,7 @@
 """Tests du choix de périphérique micro (liste + sélection)."""
 
+import time
+
 import pytest
 
 from core import recorder_core
@@ -88,6 +90,43 @@ def test_recorder_stores_audio_device_index():
 def test_recorder_defaults_to_system_device():
     rec = RecorderCore()
     assert rec.audio_device_index is None
+
+
+def test_video_waits_for_first_audio_chunk(monkeypatch):
+    """L'ouverture de PortAudio prend ~1 s : la vidéo ne doit pas partir
+    avant, sinon -shortest tronque cette seconde à l'encodage."""
+    rec = RecorderCore(resolution="160x120", fps=10, audio_enabled=True)
+    order = []
+
+    def fake_audio():
+        order.append('audio_start')
+        time.sleep(0.3)          # simule l'init lente de PortAudio
+        rec._audio_ready.set()
+
+    def fake_screen():
+        order.append('video_start')
+
+    monkeypatch.setattr(rec, '_capture_audio', fake_audio)
+    monkeypatch.setattr(rec, '_capture_screen', fake_screen)
+
+    rec.start_recording("ignore.mp4")
+    rec.recording_thread.join(timeout=2.0)
+    rec.audio_thread.join(timeout=2.0)
+
+    assert order == ['audio_start', 'video_start']
+
+
+def test_video_starts_even_if_audio_never_ready(monkeypatch):
+    """Un micro qui n'ouvre jamais ne doit pas bloquer l'enregistrement."""
+    rec = RecorderCore(resolution="160x120", fps=10, audio_enabled=True)
+    started = []
+
+    monkeypatch.setattr(rec, '_capture_audio', lambda: rec._audio_ready.set())
+    monkeypatch.setattr(rec, '_capture_screen', lambda: started.append(True))
+
+    rec.start_recording("ignore.mp4")
+    rec.recording_thread.join(timeout=2.0)
+    assert started == [True]
 
 
 def test_audio_disabled_produces_no_audio_thread(tmp_path):

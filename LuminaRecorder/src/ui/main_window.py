@@ -414,6 +414,9 @@ Vous pouvez les modifier manuellement si nécessaire.
         output_dir.mkdir(parents=True, exist_ok=True)
         output_filename = f"Lumina_{timestamp}.mp4"
         output_path = output_dir / output_filename
+        # Conservé pour l'encodage : le fichier final va dans le dossier
+        # choisi par l'utilisateur, pas à côté du brut dans temp/
+        self.final_output_path = str(output_path)
 
         # Préflight : FFmpeg doit être disponible AVANT de démarrer
         try:
@@ -473,7 +476,8 @@ Vous pouvez les modifier manuellement si nécessaire.
 
                 # Encodage FFmpeg
                 encoder = VideoEncoder()
-                final_path = self.current_video_path.replace('.avi', '_final.mp4')
+                final_path = getattr(self, 'final_output_path', None) \
+                    or self.current_video_path.replace('.avi', '_final.mp4')
 
                 success = encoder.encode(
                     video_path=self.current_video_path,
