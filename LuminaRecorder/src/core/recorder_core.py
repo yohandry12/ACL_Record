@@ -28,7 +28,8 @@ class RecorderCore:
     def __init__(self, resolution: str = "1920x1080", fps: int = 30,
                  audio_enabled: bool = True, audio_gain: float = 0.5,
                  filters: Optional[List[FrameFilter]] = None,
-                 on_filter_disabled: Optional[Callable[[str], None]] = None):
+                 on_filter_disabled: Optional[Callable[[str], None]] = None,
+                 on_capture_error: Optional[Callable[[str], None]] = None):
         self.resolution = resolution
         self.fps = fps
         self.audio_enabled = audio_enabled
@@ -39,6 +40,7 @@ class RecorderCore:
             frame_budget=1.0 / fps,
             on_disable=on_filter_disabled
         )
+        self.on_capture_error = on_capture_error
 
         self.is_recording = False
         self.recording_thread = None
@@ -154,11 +156,18 @@ class RecorderCore:
         while self.is_recording:
             start_frame_time = time.time()
 
-            screenshot = self.sct.grab(self.monitor)
-            img = np.array(screenshot)
-            img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            try:
+                screenshot = self.sct.grab(self.monitor)
+                img = np.array(screenshot)
+                img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
-            self._write_frame(img_bgr)
+                self._write_frame(img_bgr)
+            except Exception as e:
+                self.is_recording = False
+                print(f"[Lumina] Erreur capture écran: {e}")
+                if self.on_capture_error:
+                    self.on_capture_error(str(e))
+                break
 
             elapsed = time.time() - start_frame_time
             sleep_time = max(0, frame_interval - elapsed)

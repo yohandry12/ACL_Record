@@ -53,3 +53,15 @@ def test_stop_without_frames_returns_empty(tmp_path):
     video_path, audio_path = rec.stop_recording()
     assert video_path == ""
     assert audio_path == ""
+
+
+def test_capture_error_stops_recording_and_notifies(tmp_path):
+    errors = []
+    rec = RecorderCore(resolution="160x120", fps=10, audio_enabled=False,
+                       on_capture_error=errors.append)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    rec.sct = type("BrokenSct", (), {"grab": lambda self, m: (_ for _ in ()).throw(RuntimeError("écran perdu"))})()
+    rec._capture_screen()  # appel direct, synchrone
+    assert rec.is_recording is False
+    assert errors and "écran perdu" in errors[0]

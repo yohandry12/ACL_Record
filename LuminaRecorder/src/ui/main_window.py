@@ -347,7 +347,8 @@ Vous pouvez les modifier manuellement si nécessaire.
             audio_enabled=True,
             audio_gain=audio_gain,
             filters=AIOptions.build_filters(options),
-            on_filter_disabled=self._on_filter_disabled
+            on_filter_disabled=self._on_filter_disabled,
+            on_capture_error=self._on_capture_error
         )
 
         # Démarrage
@@ -396,7 +397,8 @@ Vous pouvez les modifier manuellement si nécessaire.
                     resolution=self.resolution_combo.get().split()[0],
                     fps=self.recommended_settings.get('fps', 30),
                     bitrate=self.bitrate_var.get(),
-                    audio_gain=self.volume_slider.get()
+                    # Le gain est déjà appliqué au WAV pendant la capture, ne pas le réappliquer ici
+                    audio_gain=1.0
                 )
 
                 if success:
@@ -504,6 +506,15 @@ Vous pouvez les modifier manuellement si nécessaire.
         self.root.after(0, lambda: self.status_label.config(
             text=f"⚠ {display} désactivé (machine trop lente)",
             fg=self.colors['warning']))
+
+    def _on_capture_error(self, error_msg: str):
+        """Appelé depuis le thread de capture si la capture échoue."""
+        def notify():
+            self.status_label.config(text=f"✗ Erreur de capture : {error_msg}",
+                                     fg=self.colors['danger'])
+            if self.is_recording:
+                self._stop_recording()
+        self.root.after(0, notify)
 
     def _browse_folder(self):
         """Ouvre le sélecteur de dossier"""
