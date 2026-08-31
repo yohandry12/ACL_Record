@@ -16,7 +16,8 @@ from typing import Callable, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from services.ai_engine import LuminaAIEngine, LuminaAIService
+from services.ai_engine import LuminaAIEngine
+from services.ai_provider import AITasks
 from .base import PostProcessor, PostProcessResult
 
 
@@ -118,10 +119,12 @@ class ThumbnailProcessor(PostProcessor):
         try:
             if not self.ai_engine.is_available():
                 return ""
-            service = LuminaAIService(self.ai_engine)
+            # AITasks.thumbnail_title renvoie un TITRE à incruster.
+            # suggest_thumbnail décrivait une maquette de miniature
+            # (« fond bleu, flèche rouge… »), inutilisable tel quel en
+            # surimpression.
             context = f"Capture d'écran issue de {os.path.basename(video_path)}"
-            suggestion = service.suggest_thumbnail(context)
-            return _first_six_words(suggestion or "")
+            return AITasks(self.ai_engine).thumbnail_title(context)
         except Exception:
             # Une IA défaillante ne doit jamais faire échouer la génération
             # de miniatures, ni produire un texte inventé

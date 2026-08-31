@@ -36,3 +36,8 @@ packaging>=23.0
 # Interface web (fenêtre native pilotée par HTML/CSS)
 # Sans ce paquet, Lumina bascule sur l'interface tkinter classique
 pywebview>=5.0
+
+# Stockage des clés API dans le coffre Windows
+# Sans ce paquet, aucune clé ne peut être enregistrée (les variables
+# d'environnement restent utilisables)
+keyring>=24.0

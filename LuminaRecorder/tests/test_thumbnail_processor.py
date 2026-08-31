@@ -47,12 +47,15 @@ class FakeAIEngine:
         return True
 
 
-class FakeAIService:
+class FakeAITasks:
+    """Remplace AITasks : le processeur demande un TITRE à incruster,
+    pas une description de maquette."""
+
     def __init__(self, ai_engine):
         self.ai = ai_engine
 
-    def suggest_thumbnail(self, video_context):
-        return "Un titre vraiment très accrocheur qui dépasse six mots"
+    def thumbnail_title(self, context):
+        return "Un titre vraiment très accrocheur"
 
 
 @pytest.mark.skipif(ffmpeg_missing, reason="ffmpeg introuvable")
@@ -113,20 +116,20 @@ def test_no_text_without_ai_engine(tmp_path, monkeypatch):
 @pytest.mark.skipif(ffmpeg_missing, reason="ffmpeg introuvable")
 def test_text_overlay_when_ai_available(tmp_path, monkeypatch):
     """Avec un moteur IA disponible, le titre suggéré doit être utilisé
-    (tronqué aux 6 premiers mots) — on vérifie indirectement en s'assurant
-    que la génération réussit et que le service IA a bien été sollicité."""
+    — on vérifie que la génération réussit et que le moteur a bien été
+    sollicité une fois."""
     video = tmp_path / "withai.mp4"
     _make_synthetic_video(video, duration=3)
 
     calls = []
 
-    class TrackingAIService(FakeAIService):
-        def suggest_thumbnail(self, video_context):
-            calls.append(video_context)
-            return super().suggest_thumbnail(video_context)
+    class TrackingAITasks(FakeAITasks):
+        def thumbnail_title(self, context):
+            calls.append(context)
+            return super().thumbnail_title(context)
 
     import postprocess.thumbnail_processor as tp
-    monkeypatch.setattr(tp, "LuminaAIService", TrackingAIService)
+    monkeypatch.setattr(tp, "AITasks", TrackingAITasks)
 
     proc = ThumbnailProcessor(count=3, ai_engine=FakeAIEngine())
     result = proc.run(str(video), None, lambda p: None)
