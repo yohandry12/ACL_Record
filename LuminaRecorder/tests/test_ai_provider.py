@@ -194,3 +194,63 @@ def test_la_consigne_interdit_de_reformuler():
     consigne = moteur.appels[0]['system'].lower()
     assert "ne reformule pas" in consigne
     assert "même nombre de lignes" in consigne
+
+
+# --- les échecs doivent lever, jamais être renvoyés comme du texte ---
+
+def test_ollama_absent_leve_au_lieu_de_renvoyer_du_texte(monkeypatch):
+    """Une chaîne « Erreur Ollama: … » renvoyée comme réponse finirait
+    incrustée dans une miniature ou écrite dans un fichier de résumé,
+    présentée comme du contenu produit par le modèle."""
+    import requests
+
+    from services.ai_engine import LuminaAIEngine
+
+    def refuse(*args, **kwargs):
+        raise requests.exceptions.ConnectionError("injoignable")
+
+    monkeypatch.setattr(requests, 'post', refuse)
+    engine = LuminaAIEngine(provider='ollama')
+
+    with pytest.raises(RuntimeError, match="ne répond pas"):
+        engine.generate_text("test")
+
+
+def test_modele_absent_est_explique(monkeypatch):
+    """404 = modèle non installé. Le dire clairement plutôt que « erreur
+    HTTP » : c'est le cas le plus fréquent et le plus simple à corriger."""
+    import requests
+
+    from services.ai_engine import LuminaAIEngine
+
+    class Reponse404:
+        status_code = 404
+
+        def raise_for_status(self):
+            error = requests.exceptions.HTTPError("404")
+            error.response = self
+            raise error
+
+    monkeypatch.setattr(requests, 'post', lambda *a, **k: Reponse404())
+    engine = LuminaAIEngine(provider='ollama', model='modele-fantome')
+
+    with pytest.raises(RuntimeError, match="ollama pull modele-fantome"):
+        engine.generate_text("test")
+
+
+def test_une_panne_ne_devient_pas_un_titre_de_miniature(monkeypatch):
+    """Bout en bout : le moteur lève, AITasks attrape, et le titre reste
+    vide plutôt que de contenir un message d'erreur."""
+    import requests
+
+    from services.ai_engine import LuminaAIEngine
+
+    def refuse(*args, **kwargs):
+        raise requests.exceptions.ConnectionError("injoignable")
+
+    monkeypatch.setattr(requests, 'post', refuse)
+    engine = LuminaAIEngine(provider='ollama')
+
+    titre = AITasks(engine).thumbnail_title("un tutoriel")
+
+    assert titre == ""

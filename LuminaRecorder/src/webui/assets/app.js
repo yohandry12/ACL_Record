@@ -257,7 +257,155 @@ function showResult(payload) {
   }
 }
 
-/* ---------- câblage des contrôles ---------- */
+/* ---------- configuration du fournisseur IA ---------- */
+
+let aiConfig = null;
+
+/* Resume, sous le titre du panneau, quel fournisseur est actif et si les
+ * donnees quittent la machine. L'utilisateur ne doit pas avoir a ouvrir
+ * la boite de dialogue pour le savoir. */
+function renderProviderLine() {
+  const line = $('provider-line');
+  if (!line || !aiConfig) return;
+
+  const info = aiConfig.providers.find((p) => p.id === aiConfig.provider);
+  const nom = info ? info.label : aiConfig.provider;
+
+  if (!aiConfig.ready) {
+    line.innerHTML = '<span class="offsite">' + nom + ' \u2014 non configur\u00e9</span>';
+    return;
+  }
+  line.innerHTML = aiConfig.sends_offsite
+    ? nom + ' \u00b7 <span class="offsite">les donn\u00e9es sortent du poste</span>'
+    : nom + ' \u00b7 rien ne quitte la machine';
+}
+
+function renderAiModal() {
+  if (!aiConfig) return;
+
+  const select = $('ai-provider');
+  select.innerHTML = '';
+  aiConfig.providers.forEach((p) => {
+    const suffixe = p.needs_key && !p.has_key ? ' \u2014 cl\u00e9 manquante' : '';
+    select.add(new Option(p.label + suffixe, p.id));
+  });
+  select.value = aiConfig.provider;
+
+  const info = aiConfig.providers.find((p) => p.id === aiConfig.provider);
+  const note = $('ai-privacy');
+  note.textContent = info ? info.note : '';
+  note.className = 'modal-note ' + (info && info.local ? 'local' : 'offsite');
+
+  $('ai-model').value = aiConfig.model || (info ? info.default_model : '');
+
+  // Les modeles installes localement ne se devinent pas : les lister
+  const hint = $('ai-model-hint');
+  if (aiConfig.provider === 'ollama') {
+    hint.textContent = aiConfig.local_models.length
+      ? 'Install\u00e9s : ' + aiConfig.local_models.join(', ')
+      : 'Ollama ne r\u00e9pond pas \u2014 est-il lanc\u00e9 ?';
+  } else {
+    hint.textContent = info ? 'Par d\u00e9faut : ' + info.default_model : '';
+  }
+
+  // Ollama tourne en local : aucune cle a saisir
+  const keyField = $('ai-key-field');
+  keyField.style.display = info && info.needs_key ? '' : 'none';
+  const key = $('ai-key');
+  key.value = '';
+  key.placeholder = info && info.has_key
+    ? 'Cl\u00e9 enregistr\u00e9e (' + info.masked_key + ') \u2014 laissez vide pour la garder'
+    : 'Collez votre cl\u00e9';
+
+  setAiStatus('');
+}
+
+function setAiStatus(message, kind) {
+  const node = $('ai-status');
+  node.textContent = message;
+  node.className = 'modal-status' + (kind ? ' ' + kind : '');
+}
+
+async function openAiModal() {
+  aiConfig = await call('get_ai_config');
+  renderAiModal();
+  $('ai-modal').hidden = false;
+}
+
+function closeAiModal() {
+  $('ai-modal').hidden = true;
+  // Ne jamais laisser une cle en clair dans le DOM apres fermeture
+  $('ai-key').value = '';
+}
+
+async function saveAiConfig() {
+  const provider = $('ai-provider').value;
+  const model = $('ai-model').value.trim();
+  const key = $('ai-key').value;
+
+  setAiStatus('Enregistrement\u2026');
+  const choix = await call('set_ai_provider', provider, model);
+  if (!choix.ok) {
+    setAiStatus(choix.error || '\u00c9chec', 'error');
+    return;
+  }
+
+  // Champ laisse vide : la cle deja enregistree est conservee
+  if (key) {
+    const resultat = await call('set_ai_key', provider, key);
+    if (!resultat.ok) {
+      setAiStatus(resultat.error || '\u00c9chec', 'error');
+      return;
+    }
+    aiConfig = resultat.config;
+  } else {
+    aiConfig = choix.config;
+  }
+
+  $('ai-key').value = '';
+  renderAiModal();
+  renderProviderLine();
+  await refreshAiAvailability();
+  setAiStatus('Enregistr\u00e9', 'ok');
+}
+
+async function testAiProvider() {
+  setAiStatus('Test en cours\u2026');
+  const resultat = await call('test_ai_provider');
+  setAiStatus(resultat.ok ? 'R\u00e9ponse : ' + resultat.answer
+                          : (resultat.error || '\u00c9chec'),
+              resultat.ok ? 'ok' : 'error');
+}
+
+/* Les deux options qui dependent d'un fournisseur peuvent devenir
+ * disponibles sans redemarrage : on relit l'etat apres configuration. */
+async function refreshAiAvailability() {
+  const state = await call('get_initial_state');
+  if (!state || !state.ai) return;
+  applyAiAvailability(state.ai.available);
+}
+
+function applyAiAvailability(available) {
+  const raisons = {
+    subtitles: 'N\u00e9cessite faster-whisper',
+    privacy_blur: 'N\u00e9cessite easyocr',
+    summary: 'N\u00e9cessite un fournisseur IA et les sous-titres',
+    subtitle_fix: 'N\u00e9cessite un fournisseur IA et les sous-titres',
+  };
+  Object.entries(raisons).forEach(([cle, raison]) => {
+    const wrapper = $('wrap-' + cle);
+    const input = $(cle);
+    if (!wrapper || !input) return;
+    if (available[cle]) {
+      wrapper.classList.remove('disabled');
+      input.disabled = false;
+    } else {
+      disable('wrap-' + cle, cle, 'hint-' + cle, raison);
+    }
+  });
+}
+
+/* ---------- cablage des controles ---------- */
 
 function bindCheckbox(id, key, onChange) {
   const input = $(id);
@@ -343,14 +491,7 @@ function populate(state) {
   $('magic_cut_max').value = state.ai.magic_cut_max;
   $('delete_original').checked = state.ai.delete_original;
 
-  if (!state.ai.available.subtitles) {
-    disable('wrap-subtitles', 'subtitles', 'hint-subtitles',
-            'Nécessite faster-whisper');
-  }
-  if (!state.ai.available.privacy_blur) {
-    disable('wrap-privacy_blur', 'privacy_blur', 'hint-privacy_blur',
-            'Nécessite easyocr');
-  }
+  applyAiAvailability(state.ai.available);
 }
 
 function wire() {
@@ -392,11 +533,36 @@ function wire() {
   ['privacy_blur', 'clean_canvas', 'overlay', 'subtitles', 'magic_cut',
    'thumbnails'].forEach((key) => bindCheckbox(key, key));
   bindCheckbox('delete_original', 'delete_original');
+  bindCheckbox('summary', 'summary');
+  bindCheckbox('subtitle_fix', 'subtitle_fix');
+
+  $('open-ai-config').addEventListener('click', openAiModal);
+  $('ai-close').addEventListener('click', closeAiModal);
+  $('ai-save').addEventListener('click', saveAiConfig);
+  $('ai-test').addEventListener('click', testAiProvider);
+  $('ai-provider').addEventListener('change', () => {
+    // Refleter immediatement l'avertissement du fournisseur choisi,
+    // avant meme d'enregistrer
+    const choisi = $('ai-provider').value;
+    const info = aiConfig.providers.find((p) => p.id === choisi);
+    if (info) {
+      aiConfig = { ...aiConfig, provider: choisi, model: info.default_model };
+      renderAiModal();
+    }
+  });
+  // Clic hors de la carte : fermer, comme toute boite de dialogue
+  $('ai-modal').addEventListener('click', (event) => {
+    if (event.target === $('ai-modal')) closeAiModal();
+  });
 
   // Le raccourci global passe par Windows, mais F9 pressé alors que la
   // fenêtre a le focus arriverait ici en double : on le laisse au
   // système, seul maître du basculement
   document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !$('ai-modal').hidden) {
+      closeAiModal();
+      return;
+    }
     if (event.key === 'Escape' && state === 'recording') {
       call('toggle_recording');
     }
@@ -405,6 +571,17 @@ function wire() {
 
 window.addEventListener('pywebviewready', async () => {
   wire();
+
+  // Les informations d'abord : le montage du fond anime prend du temps
+  // et retarderait l'affichage de l'interface
+  aiConfig = await call('get_ai_config');
+  renderProviderLine();
+
+  const initial = await call('get_initial_state');
+  if (initial) {
+    populate(initial);
+    applyState(initial.state);
+  }
 
   // Fond anime : palette du theme, flux par defaut, repulsion au curseur
   const canvas = $('backdrop');
@@ -426,9 +603,10 @@ window.addEventListener('pywebviewready', async () => {
     backdrop.mount();
   }
 
-  const initial = await call('get_initial_state');
-  if (initial) {
-    populate(initial);
-    applyState(initial.state);
+  // Signal de fin d'initialisation. Utilise par les verifications
+  // automatisees pour ne pas deviner un delai ; absent en production, ou
+  // l'appel echoue silencieusement.
+  if (window.pywebview?.api?.page_prete) {
+    try { window.pywebview.api.page_prete(); } catch (e) { /* ignore */ }
   }
 });

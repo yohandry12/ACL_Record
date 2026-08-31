@@ -108,14 +108,26 @@ class LuminaAIEngine:
         if system_prompt:
             payload['system'] = system_prompt
         
+        # Un échec doit LEVER, pas être retourné comme du texte : une
+        # chaîne « Erreur Ollama: … » renvoyée telle quelle finirait
+        # incrustée dans une miniature ou écrite dans un fichier de
+        # résumé, présentée comme une réponse du modèle.
         try:
             response = requests.post(url, json=payload, timeout=120)
             response.raise_for_status()
-            return response.json().get('response', '')
-        except requests.exceptions.ConnectionError:
-            return "Erreur: Ollama n'est pas installé ou ne tourne pas. Lancez 'ollama serve'."
-        except Exception as e:
-            return f"Erreur Ollama: {str(e)}"
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(
+                "Ollama ne répond pas. Est-il lancé (ollama serve) ?") from e
+        except requests.exceptions.HTTPError as e:
+            # 404 = modèle absent : le cas le plus fréquent, et le plus
+            # simple à corriger si on le dit clairement
+            if e.response is not None and e.response.status_code == 404:
+                raise RuntimeError(
+                    f"Le modèle « {self.model} » n'est pas installé. "
+                    f"Installez-le avec : ollama pull {self.model}") from e
+            raise RuntimeError(f"Ollama a refusé la requête : {e}") from e
+
+        return response.json().get('response', '')
     
     def _call_openai_compatible(self, prompt: str, system_prompt: str = None, **kwargs) -> str:
         """Appelle les API compatibles OpenAI (OpenAI, DeepSeek, NVIDIA)."""

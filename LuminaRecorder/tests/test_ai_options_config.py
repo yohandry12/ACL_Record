@@ -13,18 +13,20 @@ def make_config(tmp_path):
 
 
 def test_load_defaults_all_false(tmp_path):
+    """Aucune option n'est active tant que l'utilisateur ne l'a pas
+    cochée. Vérifié sur toutes les clés déclarées, pour que le test ne
+    devienne pas faux au prochain ajout."""
     cfg = make_config(tmp_path)
     opts = AIOptions.load(cfg)
-    assert opts == {'privacy_blur': False, 'clean_canvas': False,
-                    'overlay': False, 'subtitles': False,
-                    'magic_cut': False, 'thumbnails': False}
+    assert set(opts) == set(AIOptions.KEYS)
+    assert all(value is False for value in opts.values())
 
 
 def test_save_then_load_roundtrip(tmp_path):
     cfg = make_config(tmp_path)
-    wanted = {'privacy_blur': True, 'clean_canvas': False,
-              'overlay': True, 'subtitles': True, 'magic_cut': False,
-              'thumbnails': True}
+    # Une option sur deux activée, quelle que soit la liste des clés
+    wanted = {key: (index % 2 == 0)
+              for index, key in enumerate(AIOptions.KEYS)}
     AIOptions.save(cfg, wanted)
     cfg2 = ConfigManager(config_path=str(tmp_path / "test_config.ini"))
     assert AIOptions.load(cfg2) == wanted

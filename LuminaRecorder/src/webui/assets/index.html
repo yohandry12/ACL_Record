@@ -140,7 +140,11 @@
   </section>
 
   <section class="panel">
-    <h2>Intelligence artificielle</h2>
+    <div class="panel-head">
+      <h2>Intelligence artificielle</h2>
+      <button class="link-btn" id="open-ai-config">Fournisseur…</button>
+    </div>
+    <div class="provider-line" id="provider-line"></div>
 
     <label class="check" id="wrap-privacy_blur">
       <input type="checkbox" id="privacy_blur">
@@ -202,6 +206,24 @@
       </span>
     </label>
 
+    <label class="check" id="wrap-subtitle_fix">
+      <input type="checkbox" id="subtitle_fix">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Corriger les sous-titres</span>
+        <span class="check-hint" id="hint-subtitle_fix">Ponctuation, noms propres, termes techniques</span>
+      </span>
+    </label>
+
+    <label class="check" id="wrap-summary">
+      <input type="checkbox" id="summary">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Résumé de l'enregistrement</span>
+        <span class="check-hint" id="hint-summary">Points clés et mots-clés, dans un .md</span>
+      </span>
+    </label>
+
     <label class="check">
       <input type="checkbox" id="thumbnails">
       <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
@@ -213,6 +235,43 @@
   </section>
 
 </main>
+
+<!-- Configuration du fournisseur IA -->
+<div class="modal" id="ai-modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Fournisseur d'intelligence artificielle</h3>
+      <button class="modal-close" id="ai-close" aria-label="Fermer">✕</button>
+    </div>
+
+    <p class="modal-note" id="ai-privacy"></p>
+
+    <div class="field">
+      <label for="ai-provider">Fournisseur</label>
+      <select id="ai-provider"></select>
+    </div>
+
+    <div class="field">
+      <label for="ai-model">Modèle</label>
+      <input type="text" id="ai-model" spellcheck="false" autocomplete="off">
+      <span class="check-hint" id="ai-model-hint"></span>
+    </div>
+
+    <div class="field" id="ai-key-field">
+      <label for="ai-key">Clé API</label>
+      <input type="password" id="ai-key" spellcheck="false"
+             autocomplete="off" placeholder="Collez votre clé">
+      <span class="check-hint">Enregistrée dans le gestionnaire
+        d'identifiants Windows, jamais dans un fichier.</span>
+    </div>
+
+    <div class="modal-actions">
+      <span class="modal-status" id="ai-status"></span>
+      <button class="btn-sub" id="ai-test">Tester</button>
+      <button class="btn-primary" id="ai-save">Enregistrer</button>
+    </div>
+  </div>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

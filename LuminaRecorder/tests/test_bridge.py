@@ -136,7 +136,8 @@ def test_etat_initial_annonce_ce_qui_est_installe(bridge):
     connaître la disponibilité réelle, jamais une valeur inventée."""
     state = bridge.get_initial_state()
 
-    assert set(state['ai']['available']) == {'subtitles', 'privacy_blur'}
+    assert {'subtitles', 'privacy_blur', 'summary',
+            'subtitle_fix'} <= set(state['ai']['available'])
     for value in state['ai']['available'].values():
         assert isinstance(value, bool)
 
@@ -462,3 +463,131 @@ def test_une_position_jamais_lue_ne_casse_pas_le_retour(bridge, monkeypatch):
     bridge.stop_recording()
 
     assert attendre(lambda: bridge.state == IDLE)
+
+
+# --- panneau de configuration IA ---
+
+def test_la_config_ia_ne_divulgue_aucune_cle(bridge, monkeypatch):
+    """La page reçoit cet objet : une clé en clair y serait lisible par
+    tout script qui s'exécute dedans."""
+    monkeypatch.setattr(bridge_module, 'providers_status',
+                        lambda: [{'id': 'openai', 'has_key': True,
+                                  'masked_key': 'sk-abc…7890', 'local': False,
+                                  'needs_key': True, 'label': 'OpenAI',
+                                  'default_model': 'gpt-4o-mini', 'note': ''}])
+
+    config = bridge.get_ai_config()
+
+    assert 'sk-abcdefghij1234567890' not in repr(config)
+    assert config['providers'][0]['masked_key'] == 'sk-abc…7890'
+
+
+def test_la_config_ia_signale_ce_qui_sort_du_poste(bridge):
+    """L'utilisateur doit savoir avant de cocher que le contenu parlé de
+    ses enregistrements partira chez un tiers."""
+    bridge.config.set('ai', 'provider', 'ollama')
+    assert bridge.get_ai_config()['sends_offsite'] is False
+
+    bridge.config.set('ai', 'provider', 'openai')
+    assert bridge.get_ai_config()['sends_offsite'] is True
+
+
+def test_choix_du_fournisseur_persiste(bridge):
+    result = bridge.set_ai_provider('claude')
+
+    assert result['ok'] is True
+    assert bridge.config.get('ai', 'provider') == 'claude'
+    # Un modèle par défaut est posé : sans lui le moteur n'aurait rien
+    assert bridge.config.get('ai', 'model')
+
+
+def test_fournisseur_inconnu_est_refuse(bridge):
+    result = bridge.set_ai_provider('service_invente')
+
+    assert result['ok'] is False
+    assert bridge.config.get('ai', 'provider') is None
+
+
+def test_coffre_indisponible_est_signale(bridge, monkeypatch):
+    """Ne jamais laisser croire qu'une clé est enregistrée quand elle ne
+    l'est pas : l'utilisateur croirait la fonctionnalité active."""
+    monkeypatch.setattr(bridge_module, 'set_api_key', lambda p, k: False)
+
+    result = bridge.set_ai_key('openai', 'sk-test')
+
+    assert result['ok'] is False
+    assert 'coffre' in result['error'].lower()
+
+
+def test_la_cle_ne_repart_pas_vers_la_page(bridge, monkeypatch):
+    monkeypatch.setattr(bridge_module, 'set_api_key', lambda p, k: True)
+    monkeypatch.setattr(bridge_module, 'providers_status', lambda: [])
+
+    result = bridge.set_ai_key('openai', 'sk-secret-a-ne-pas-renvoyer')
+
+    assert 'sk-secret-a-ne-pas-renvoyer' not in repr(result)
+
+
+def test_test_du_fournisseur_sans_configuration(bridge, monkeypatch):
+    monkeypatch.setattr(bridge_module, 'build_engine_from_config',
+                        lambda c: None)
+
+    result = bridge.test_ai_provider()
+
+    assert result['ok'] is False
+
+
+def test_test_du_fournisseur_signale_une_panne(bridge, monkeypatch):
+    """Une clé enregistrée peut être invalide : seul un appel réel le
+    dit."""
+    class MoteurEnPanne:
+        def generate_text(self, prompt, system_prompt=None, **kwargs):
+            raise RuntimeError("clé refusée")
+
+    monkeypatch.setattr(bridge_module, 'build_engine_from_config',
+                        lambda c: MoteurEnPanne())
+
+    result = bridge.test_ai_provider()
+
+    assert result['ok'] is False
+    assert 'refusée' in result['error']
+
+
+def test_test_du_fournisseur_reussi(bridge, monkeypatch):
+    class MoteurOk:
+        def generate_text(self, prompt, system_prompt=None, **kwargs):
+            return "OK"
+
+    monkeypatch.setattr(bridge_module, 'build_engine_from_config',
+                        lambda c: MoteurOk())
+
+    result = bridge.test_ai_provider()
+
+    assert result['ok'] is True
+    assert result['answer'] == 'OK'
+
+
+def test_sans_moteur_les_traitements_ia_sont_absents(bridge, monkeypatch):
+    """Un post-processeur ajouté sans moteur échouerait au moment de
+    s'exécuter, après l'enregistrement : mieux vaut l'omettre."""
+    from core.ai_options import AIOptions
+
+    procs = AIOptions.build_postprocessors(
+        {'summary': True, 'subtitle_fix': True}, ai_engine=None)
+
+    assert procs == []
+
+
+def test_avec_moteur_les_traitements_ia_sont_presents():
+    from core.ai_options import AIOptions
+
+    procs = AIOptions.build_postprocessors(
+        {'subtitles': True, 'summary': True, 'subtitle_fix': True},
+        ai_engine=object())
+
+    noms = [type(p).__name__ for p in procs]
+    # Les sous-titres produisent le .srt que les deux autres lisent :
+    # ils doivent passer en premier
+    assert noms[0] == 'SubtitlesProcessor'
+    assert 'SummaryProcessor' in noms
+    assert 'SubtitleFixProcessor' in noms

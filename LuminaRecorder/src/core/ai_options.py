@@ -23,6 +23,8 @@ from filters.overlay_filter import OverlayFilter
 from postprocess.subtitles_processor import SubtitlesProcessor
 from postprocess.magic_cut_processor import MagicCutProcessor
 from postprocess.thumbnail_processor import ThumbnailProcessor
+from postprocess.ai_text_processors import (SubtitleFixProcessor,
+                                            SummaryProcessor)
 
 
 class AIOptions:
@@ -37,6 +39,10 @@ class AIOptions:
         'subtitles': ('ai', 'auto_subtitles'),
         'magic_cut': ('ai', 'magic_cut'),
         'thumbnails': ('ai', 'thumbnails'),
+        # Nécessitent un fournisseur IA configuré ET les sous-titres :
+        # tous deux travaillent à partir du .srt
+        'summary': ('ai', 'summary'),
+        'subtitle_fix': ('ai', 'subtitle_fix'),
     }
 
     @staticmethod
@@ -77,14 +83,33 @@ class AIOptions:
     @staticmethod
     def build_postprocessors(options: dict,
                              max_silence: str = "3 s",
-                             delete_original: bool = False) -> list:
+                             delete_original: bool = False,
+                             ai_engine=None) -> list:
+        """Construit la chaîne de post-traitement, dans l'ordre d'exécution.
+
+        L'ordre n'est pas arbitraire : les sous-titres produisent le .srt
+        dont le résumé et la correction ont besoin, et Magic Cut modifie
+        la vidéo que les miniatures analysent ensuite.
+
+        `ai_engine` vaut None quand aucun fournisseur IA n'est configuré.
+        Les traitements qui en dépendent sont alors simplement absents de
+        la chaîne, plutôt qu'ajoutés pour échouer au moment de s'exécuter.
+        """
         procs = []
         if options.get('subtitles'):
-            procs.append(SubtitlesProcessor())   # sous-titres AVANT Magic Cut
+            procs.append(SubtitlesProcessor())   # produit le .srt
+
+        # Travaillent sur le .srt : juste après les sous-titres, et
+        # avant que Magic Cut ne redécoupe la vidéo
+        if options.get('subtitle_fix') and ai_engine is not None:
+            procs.append(SubtitleFixProcessor(ai_engine))
+        if options.get('summary') and ai_engine is not None:
+            procs.append(SummaryProcessor(ai_engine))
+
         if options.get('magic_cut'):
             procs.append(MagicCutProcessor(
                 max_silence_duration=AIOptions.parse_max_silence(max_silence),
                 delete_original=delete_original))
         if options.get('thumbnails'):
-            procs.append(ThumbnailProcessor())   # dernier : agit sur la vidéo finale
+            procs.append(ThumbnailProcessor(ai_engine=ai_engine))
         return procs

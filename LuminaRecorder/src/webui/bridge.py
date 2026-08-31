@@ -40,6 +40,11 @@ from core.system_analyzer import SystemAnalyzer
 from core.system_audio import system_audio_is_available
 from postprocess.base import run_postprocessors
 from postprocess.subtitles_processor import whisper_is_available
+from services.ai_credentials import (providers_status, set_api_key,
+                                     PROVIDERS)
+from services.ai_provider import (DEFAULT_PROVIDER, build_engine,
+                                  build_engine_from_config,
+                                  sends_data_offsite)
 from services.ocr_service import ocr_is_available
 from utils.config_manager import ConfigManager
 
@@ -331,7 +336,15 @@ class LuminaBridge:
                 'available': {
                     'subtitles': whisper_is_available(),
                     'privacy_blur': ocr_is_available(),
+                    # Ces deux-là ont besoin d'un fournisseur IA ET des
+                    # sous-titres, dont ils lisent le .srt
+                    'summary': bool(build_engine_from_config(self.config))
+                                and whisper_is_available(),
+                    'subtitle_fix': bool(build_engine_from_config(self.config))
+                                     and whisper_is_available(),
                 },
+                'provider': self.config.get('ai', 'provider',
+                                            fallback=DEFAULT_PROVIDER),
             },
         }
 
@@ -368,6 +381,108 @@ class LuminaBridge:
                 return {'ok': True}
 
             return {'ok': False, 'error': f"Réglage inconnu : {key}"}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    # ------------------------------------------------------------------
+    # Fournisseurs IA
+    # ------------------------------------------------------------------
+
+    def get_ai_config(self) -> dict:
+        """État des fournisseurs IA, pour le panneau de configuration.
+
+        Ne renvoie JAMAIS de clé en clair : `providers_status` les masque.
+        Une clé exposée à la page serait lisible par tout script qui s'y
+        exécute.
+        """
+        provider = self.config.get('ai', 'provider', fallback=DEFAULT_PROVIDER)
+        model = self.config.get('ai', 'model', fallback='')
+        engine = build_engine_from_config(self.config)
+
+        return {
+            'provider': provider,
+            'model': model,
+            'providers': providers_status(),
+            # « Configuré » ne veut pas dire « joignable » : Ollama peut
+            # être choisi sans être lancé. On teste réellement.
+            'ready': bool(engine and self._engine_reachable(engine)),
+            'sends_offsite': sends_data_offsite(provider),
+            'local_models': self._local_models(),
+        }
+
+    @staticmethod
+    def _engine_reachable(engine) -> bool:
+        """Le fournisseur répond-il vraiment ?
+
+        Pour Ollama, is_available() interroge le service local ; pour les
+        API distantes, il vérifie seulement la présence d'une clé — on ne
+        consomme pas de crédit juste pour afficher un état.
+        """
+        try:
+            return bool(engine.is_available())
+        except Exception:
+            return False
+
+    def _local_models(self) -> list:
+        """Modèles installés dans Ollama, s'il tourne."""
+        try:
+            engine = build_engine('ollama')
+            return engine.list_local_models() if engine else []
+        except Exception:
+            return []
+
+    def set_ai_provider(self, provider: str, model: str = '') -> dict:
+        """Choisit le fournisseur et le modèle. La clé n'est pas ici."""
+        if provider not in PROVIDERS:
+            return {'ok': False, 'error': f"Fournisseur inconnu : {provider}"}
+        try:
+            chosen = model or PROVIDERS[provider]['default_model']
+            # Le modèle par défaut d'Ollama n'est pas forcément installé.
+            # Proposer un modèle absent donnerait un 404 au premier usage,
+            # après l'enregistrement : autant prendre ce qui est là.
+            if provider == 'ollama' and not model:
+                installed = self._local_models()
+                if installed and chosen not in installed:
+                    chosen = installed[0]
+
+            self.config.set('ai', 'provider', provider)
+            self.config.set('ai', 'model', chosen)
+            return {'ok': True, 'config': self.get_ai_config()}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    def set_ai_key(self, provider: str, api_key: str) -> dict:
+        """Enregistre une clé API dans le coffre Windows.
+
+        La clé traverse le pont depuis la page, mais n'y retourne jamais :
+        la réponse ne contient que l'état, avec une version masquée.
+        """
+        if provider not in PROVIDERS:
+            return {'ok': False, 'error': f"Fournisseur inconnu : {provider}"}
+        if not set_api_key(provider, api_key or ''):
+            return {'ok': False,
+                    'error': "Coffre Windows indisponible : la clé n'a pas "
+                             "été enregistrée"}
+        return {'ok': True, 'config': self.get_ai_config()}
+
+    def test_ai_provider(self) -> dict:
+        """Interroge réellement le fournisseur configuré.
+
+        Une clé enregistrée peut être invalide, et Ollama peut être
+        choisi sans tourner : seul un appel réel le dit.
+        """
+        engine = build_engine_from_config(self.config)
+        if engine is None:
+            return {'ok': False,
+                    'error': "Aucun fournisseur configuré (clé manquante ?)"}
+        try:
+            answer = engine.generate_text(
+                "Réponds uniquement par le mot OK.",
+                "Tu réponds en un seul mot.")
+            if not answer or not answer.strip():
+                return {'ok': False,
+                        'error': "Le fournisseur n'a renvoyé aucune réponse"}
+            return {'ok': True, 'answer': answer.strip()[:60]}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
@@ -592,7 +707,11 @@ class LuminaBridge:
                 options,
                 self.config.get('recording', 'magic_cut_max', fallback='3 s'),
                 self.config.get_bool('recording', 'delete_original',
-                                     fallback=False))
+                                     fallback=False),
+                # None si aucun fournisseur n'est configuré : les
+                # traitements qui en dépendent sont alors absents de la
+                # chaîne plutôt qu'ajoutés pour échouer
+                ai_engine=build_engine_from_config(self.config))
 
             results = []
             if processors:
