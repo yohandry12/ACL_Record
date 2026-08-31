@@ -104,6 +104,8 @@ class RecorderCore:
         self.system_audio_enabled = system_audio_enabled
         self._system_capture = None
         self.system_audio_path = ""
+        # FPS réellement atteint, mesuré à l'arrêt (voir stop_recording)
+        self.actual_fps = float(fps)
 
         self.filter_chain = FilterChain(
             filters or [],
@@ -217,6 +219,11 @@ class RecorderCore:
             duration = (datetime.now() - self.start_time).total_seconds()
             print(f"[Lumina] Enregistrement arrêté. Durée: {duration:.2f}s, "
                   f"Frames: {self._frame_count}")
+            # FPS réellement atteint : sur une machine lente la capture
+            # produit moins de frames que demandé. Encoder au fps nominal
+            # jouerait l'image en accéléré et la désynchroniserait du son.
+            if duration > 0.5 and self._frame_count > 0:
+                self.actual_fps = self._frame_count / duration
 
         # Le son système est exposé à part (system_audio_path) pour ne pas
         # changer le tuple de retour attendu par l'interface
@@ -358,11 +365,17 @@ class RecorderCore:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         wav_path = temp_dir / f"lumina_system_{timestamp}.wav"
 
+        # Durée réelle de l'enregistrement : sert à combler le silence
+        # final si le son s'est arrêté avant la fin de la capture
+        total = None
+        if self.start_time:
+            total = (datetime.now() - self.start_time).total_seconds()
+
         with wave.open(str(wav_path), 'wb') as wf:
             wf.setnchannels(self._system_capture.channels or 2)
             wf.setsampwidth(2)
             wf.setframerate(self._system_capture.sample_rate or 48000)
-            wf.writeframes(self._system_capture.get_audio_bytes())
+            wf.writeframes(self._system_capture.get_audio_bytes(total))
 
         print(f"[Lumina] Fichier brut son système sauvegardé: {wav_path}")
         return str(wav_path)

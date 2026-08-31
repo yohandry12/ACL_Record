@@ -16,6 +16,7 @@ les trous doivent être comblés par du silence numérique à la sauvegarde
 pour rester synchronisé avec la vidéo.
 """
 
+import time
 from typing import List, Optional
 
 import numpy as np
@@ -70,6 +71,10 @@ class SystemAudioCapture:
         self.channels: Optional[int] = None
         self._pa = None
         self._stream = None
+        # Horodatage des chunks : le loopback ne délivre rien pendant les
+        # silences, il faut savoir OÙ les trous se situent pour les combler
+        self._timestamps: List[float] = []
+        self._start_time: Optional[float] = None
 
     def _apply_gain(self, data: bytes) -> bytes:
         if self.gain == 1.0:
@@ -85,12 +90,15 @@ class SystemAudioCapture:
             return False
 
         self.frames = []
+        self._timestamps = []
+        self._start_time = time.time()
         try:
             self._pa = pyaudiowpatch.PyAudio()
             self.sample_rate = int(device['defaultSampleRate'])
             self.channels = int(device['maxInputChannels'])
 
             def on_chunk(in_data, frame_count, time_info, status):
+                self._timestamps.append(time.time() - self._start_time)
                 self.frames.append(self._apply_gain(in_data))
                 return (None, pyaudiowpatch.paContinue)
 
@@ -126,6 +134,38 @@ class SystemAudioCapture:
                 pass
             self._pa = None
 
-    def get_audio_bytes(self) -> bytes:
-        """Concatène les chunks capturés."""
-        return b''.join(self.frames)
+    def get_audio_bytes(self, total_duration: Optional[float] = None) -> bytes:
+        """Piste complète, silences compris.
+
+        Le loopback WASAPI ne délivre aucune donnée tant que rien ne joue.
+        Concaténer les chunks bruts collerait tout le son au début : une
+        vidéo lancée après 5 s de navigation aurait son audio décalé de
+        5 s. On réinsère donc le silence à sa place d'après l'horodatage
+        des chunks, et on complète jusqu'à `total_duration` si fournie.
+        """
+        if not self.frames or not self.sample_rate or not self.channels:
+            return b''
+
+        bytes_per_frame = 2 * self.channels
+
+        def silence(seconds: float) -> bytes:
+            n = max(0, int(seconds * self.sample_rate))
+            return b'\x00' * (n * bytes_per_frame)
+
+        out = []
+        position = 0.0   # instant de fin de l'audio déjà écrit
+        for chunk, arrived_at in zip(self.frames, self._timestamps):
+            chunk_duration = len(chunk) / bytes_per_frame / self.sample_rate
+            # Le chunk couvre l'intervalle qui PRÉCÈDE son arrivée
+            chunk_start = arrived_at - chunk_duration
+            gap = chunk_start - position
+            if gap > 0.01:          # trou réel : du silence a joué
+                out.append(silence(gap))
+                position += gap
+            out.append(chunk)
+            position += chunk_duration
+
+        if total_duration and total_duration > position:
+            out.append(silence(total_duration - position))
+
+        return b''.join(out)

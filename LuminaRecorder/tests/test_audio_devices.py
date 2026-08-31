@@ -1,6 +1,7 @@
 """Tests du choix de périphérique micro (liste + sélection)."""
 
 import time
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -137,3 +138,24 @@ def test_audio_disabled_produces_no_audio_thread(tmp_path):
     _, audio_path = rec.stop_recording()
     assert rec.audio_thread is None
     assert audio_path == ""
+
+
+def test_actual_fps_measured_at_stop(tmp_path):
+    """Sur une machine lente la capture produit moins de frames que
+    demandé : encoder au fps nominal accélérerait l'image."""
+    import numpy as np
+
+    rec = RecorderCore(resolution="160x120", fps=30, audio_enabled=False)
+    rec._temp_dir = str(tmp_path)
+    rec.is_recording = True
+    rec.start_time = datetime.now() - timedelta(seconds=10)
+    for _ in range(150):                      # 150 frames en 10 s = 15 fps
+        rec._write_frame(np.zeros((120, 160, 3), dtype=np.uint8))
+    rec.stop_recording()
+
+    assert 14.0 < rec.actual_fps < 16.0       # et non 30
+
+
+def test_actual_fps_defaults_to_nominal():
+    rec = RecorderCore(fps=25, audio_enabled=False)
+    assert rec.actual_fps == 25.0

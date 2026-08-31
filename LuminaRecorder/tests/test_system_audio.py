@@ -133,6 +133,53 @@ def test_gain_is_applied_to_system_audio(fake):
     assert int(out.max()) == 5000
 
 
+def test_silence_is_reinserted_at_the_right_position(fake):
+    """Le loopback ne délivre rien pendant les silences : le son doit
+    rester à sa place, sinon une vidéo lancée après 5 s de navigation
+    aurait son audio collé au début."""
+    cap = SystemAudioCapture()
+    cap.start()
+    cb = fake.open_kwargs['stream_callback']
+
+    chunk = np.full(1024 * 2, 1000, dtype=np.int16).tobytes()
+    # Un seul chunk, arrivé après 5 s de silence
+    cap._start_time = 0.0
+    cap._timestamps = []
+    cap.frames = []
+    cap._timestamps.append(5.0)
+    cap.frames.append(chunk)
+    cap.stop()
+
+    audio = np.frombuffer(cap.get_audio_bytes(), dtype=np.int16)
+    total_frames = len(audio) // 2          # stéréo
+    # ~5 s de silence à 48 kHz, puis le chunk
+    assert total_frames > 4.5 * 48000
+    assert int(audio[:1000].max()) == 0     # le début est silencieux
+    assert int(audio.max()) == 1000         # le son est présent ensuite
+
+
+def test_final_silence_padded_to_total_duration(fake):
+    """Si le son s'arrête avant la fin, la piste est complétée."""
+    cap = SystemAudioCapture()
+    cap.start()
+    cap._start_time = 0.0
+    cap.frames = [np.full(1024 * 2, 500, dtype=np.int16).tobytes()]
+    cap._timestamps = [1.0]
+    cap.stop()
+
+    audio = np.frombuffer(cap.get_audio_bytes(total_duration=10.0),
+                          dtype=np.int16)
+    assert len(audio) // 2 >= 9.5 * 48000
+    assert int(audio[-1000:].max()) == 0    # se termine en silence
+
+
+def test_no_timestamps_returns_empty(fake):
+    cap = SystemAudioCapture()
+    cap.start()
+    cap.stop()
+    assert cap.get_audio_bytes() == b''
+
+
 def test_start_returns_false_when_unavailable(monkeypatch):
     monkeypatch.setattr(system_audio, 'WPATCH_AVAILABLE', False)
     cap = SystemAudioCapture()

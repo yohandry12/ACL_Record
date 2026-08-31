@@ -508,7 +508,10 @@ Vous pouvez les modifier manuellement si nécessaire.
                     audio_path=self.current_audio_path,
                     output_path=final_path,
                     resolution=self.resolution_combo.get().split()[0],
-                    fps=self.recommended_settings.get('fps', 30),
+                    # FPS réellement atteint : encoder au fps nominal
+                    # accélérerait l'image sur une machine lente
+                    fps=round(getattr(self.recorder, 'actual_fps',
+                                      self.recommended_settings.get('fps', 30)), 2),
                     bitrate=self.bitrate_var.get(),
                     # Le gain est déjà appliqué au WAV pendant la capture, ne pas le réappliquer ici
                     audio_gain=1.0,
