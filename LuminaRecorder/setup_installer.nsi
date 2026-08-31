@@ -31,6 +31,10 @@ RequestExecutionLevel admin
 ShowInstDetails show
 ShowUnInstDetails show
 
+; Icône du setup et du désinstalleur : le logo de l'application
+!define MUI_ICON "assets\icons\lumina.ico"
+!define MUI_UNICON "assets\icons\lumina.ico"
+
 ; Pages d'installation
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "LICENSE"

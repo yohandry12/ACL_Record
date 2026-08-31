@@ -62,6 +62,11 @@ if exist "assets\icons\lumina.ico" set ICON_OPT=--icon=assets\icons\lumina.ico
 
 REM src\ est embarque comme donnee : main.py l'ajoute au sys.path via
 REM sys._MEIPASS quand l'application est empaquetee.
+REM Les --exclude-module ecartent la pile IA lourde (PyTorch & cie,
+REM plusieurs Go) : elle est optionnelle par conception (requirements-ai),
+REM et l'embarquer rendrait le onefile enorme et lent a demarrer. Dans
+REM l'exe, sous-titres Whisper et OCR se declarent indisponibles ; l'IA
+REM via Ollama et les API distantes fonctionne normalement (HTTP).
 REM Les --hidden-import de modules standard (wave, audioop...) ne sont pas
 REM superflus : PyInstaller ne les detecte pas a travers les imports
 REM indirects de src\, et l'exe plante alors a l'import sans afficher la
@@ -77,6 +82,14 @@ pyinstaller ^
     --add-data "assets;assets" ^
     --add-data "src;src" ^
     --paths "src" ^
+    --exclude-module=torch ^
+    --exclude-module=torchvision ^
+    --exclude-module=torchaudio ^
+    --exclude-module=transformers ^
+    --exclude-module=easyocr ^
+    --exclude-module=faster_whisper ^
+    --exclude-module=ctranslate2 ^
+    --exclude-module=tensorboard ^
     --hidden-import=psutil ^
     --hidden-import=mss ^
     --hidden-import=cv2 ^
