@@ -54,6 +54,9 @@ echo.
 REM Compilation avec PyInstaller
 echo [COMPILATION] Création de l'exécutable avec PyInstaller...
 pip install pyinstaller --quiet
+REM pkg_resources (tire par keyring) exige jaraco.* a l'execution de
+REM l'exe ; ces paquets ne viennent pas toujours avec setuptools
+pip install jaraco.text jaraco.functools jaraco.context more_itertools --quiet
 
 REM L'icone est optionnelle : si assets\icons\lumina.ico n'existe pas,
 REM PyInstaller echouerait sur --icon. On adapte la commande.
