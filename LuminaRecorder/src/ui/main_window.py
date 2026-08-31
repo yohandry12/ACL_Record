@@ -17,6 +17,7 @@ from core.system_analyzer import SystemAnalyzer, SystemProfile
 from core.recorder_core import RecorderCore, list_input_devices, get_temp_dir
 from core.system_audio import system_audio_is_available
 from core.focus_tracker import smart_focus_is_available
+from core.global_hotkey import DEFAULT_HOTKEY, GlobalHotkey
 from core.encoder import VideoEncoder
 from ui.components import StyledButton, ConfigCard, StatusBadge, ResolutionSelector, VolumeSlider
 from utils.config_manager import ConfigManager
@@ -129,10 +130,17 @@ class MainWindow:
         # démarré mais un clic ne doit pas en lancer un second
         self._focus_pending = False
         self._closing = False
+        # True pendant l'encodage et le post-traitement : le raccourci
+        # global n'est pas bloqué par le modal de progression
+        self._busy = False
+        self.hotkey = None
         
         # Construction de l'interface
         self._build_ui()
-        
+
+        # Après _build_ui : le raccourci écrit dans hotkey_label
+        self._setup_hotkey()
+
         # Affichage du rapport système
         self._show_system_welcome()
 
@@ -202,7 +210,20 @@ class MainWindow:
             hover_color=self.colors['accent_hover']
         )
         self.record_btn.pack(pady=30, ipadx=30, ipady=15)
-        
+
+        # Raccourci global : indispensable pour arrêter un enregistrement
+        # plein écran sans faire revenir Lumina au premier plan, ce qui
+        # apparaîtrait dans la vidéo. Le libellé est affiché ici pour que
+        # l'utilisateur le découvre sans lire de documentation.
+        self.hotkey_label = tk.Label(
+            center_frame,
+            text="",
+            font=("Segoe UI", 9),
+            bg=self.colors['bg_primary'],
+            fg=self.colors['text_secondary']
+        )
+        self.hotkey_label.pack()
+
         # Label de statut
         self.status_label = tk.Label(
             center_frame,
@@ -564,6 +585,12 @@ Vous pouvez les modifier manuellement si nécessaire.
         # injoignable, son .avi jamais finalisé.
         if self._focus_pending:
             return
+        # Le raccourci global contourne le modal du post-traitement :
+        # grab_set() bloque la souris, pas une touche interceptée par
+        # Windows. Sans ce garde, F9 pendant l'encodage lancerait un
+        # enregistrement par dessus le traitement en cours.
+        if self._busy:
+            return
         if not self.is_recording:
             self._start_recording()
         else:
@@ -669,6 +696,27 @@ Vous pouvez les modifier manuellement si nécessaire.
             
     def _stop_recording(self):
         """Logique d'arrêt d'enregistrement"""
+        # Encodage puis post-traitement : le raccourci global doit rester
+        # sans effet pendant tout ce temps (voir _toggle_recording).
+        # Le post-traitement étant threadé, c'est _show_postprocess_summary
+        # qui lève le drapeau à la toute fin ; ici on ne le lève que si
+        # aucun post-traitement n'a été lancé.
+        self._busy = True
+        postprocessing_started = False
+        try:
+            postprocessing_started = bool(self._stop_recording_impl())
+        finally:
+            if not postprocessing_started:
+                self._busy = False
+
+    def _stop_recording_impl(self):
+        """Arrêt, encodage et post-traitement proprement dits.
+
+        Returns:
+            True si un post-traitement threadé a été lancé — l'appelant
+            laisse alors le drapeau _busy posé jusqu'à sa fin.
+        """
+        postprocessing_started = False
         if self.recorder:
             # Arrêt de la capture
             result = self.recorder.stop_recording()
@@ -721,6 +769,7 @@ Vous pouvez les modifier manuellement si nécessaire.
                         self.delete_original_var.get())
                     if processors:
                         self._run_postprocessing(final_path, processors, preserved_audio)
+                        postprocessing_started = True
                     else:
                         messagebox.showinfo(
                             "Succès", f"Vidéo sauvegardée :\n{final_path}")
@@ -738,6 +787,7 @@ Vous pouvez les modifier manuellement si nécessaire.
         self.record_btn.config(text="● COMMENCER L'ENREGISTREMENT",
                               bg_color=self.colors['accent'])
         self.timer_label.config(text="00:00:00")
+        return postprocessing_started
 
     def _run_postprocessing(self, video_path, processors, audio_path=None):
         """Exécute les post-processeurs dans un thread avec fenêtre de
@@ -789,6 +839,8 @@ Vous pouvez les modifier manuellement si nécessaire.
 
     def _show_postprocess_summary(self, video_path, results, progress_win):
         """Résumé final : la vidéo est TOUJOURS annoncée comme sauvegardée."""
+        # Fin réelle du traitement : le raccourci global redevient actif
+        self._busy = False
         try:
             progress_win.destroy()
         except tk.TclError:
@@ -849,6 +901,36 @@ Vous pouvez les modifier manuellement si nécessaire.
         if folder:
             self.save_path_var.set(folder)
             
+    def _setup_hotkey(self):
+        """Active le raccourci clavier global et l'annonce à l'utilisateur.
+
+        Un échec n'empêche jamais l'application de fonctionner : le
+        raccourci est un confort, le bouton reste utilisable.
+        """
+        label = self.config.get('recording', 'hotkey',
+                                fallback=DEFAULT_HOTKEY)
+        self.hotkey = GlobalHotkey(label, on_pressed=self._on_hotkey_pressed)
+
+        if self.hotkey.start():
+            self.hotkey_label.config(
+                text=f"Raccourci global : {label} "
+                     f"(fonctionne même quand Lumina est en arrière-plan)")
+        else:
+            # Cas courant : la combinaison est déjà prise par une autre
+            # application. Le dire plutôt que de laisser croire à un
+            # raccourci actif qui ne répondrait jamais.
+            self.hotkey_label.config(text=f"⚠ {self.hotkey.error}",
+                                     fg=self.colors['warning'])
+
+    def _on_hotkey_pressed(self):
+        """Appelé depuis le thread du raccourci, pas depuis tkinter.
+
+        On repasse par root.after : toucher un widget depuis un autre
+        thread corrompt l'état interne de Tk et fait planter l'interface
+        de façon aléatoire.
+        """
+        self.root.after(0, self._toggle_recording)
+
     def _on_close(self):
         """Fermeture propre de l'application.
 
@@ -857,6 +939,10 @@ Vous pouvez les modifier manuellement si nécessaire.
         (VideoWriter.release() n'est appelé que par stop_recording).
         """
         self._closing = True
+        # Libérer le raccourci : Windows le garderait pris jusqu'à la fin
+        # de la session, empêchant un prochain lancement de l'obtenir
+        if getattr(self, 'hotkey', None) is not None:
+            self.hotkey.stop()
         if self.recorder is not None and self.recorder.is_recording:
             try:
                 self.recorder.stop_recording()
