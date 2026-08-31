@@ -106,6 +106,7 @@ class RecorderCore:
         self.system_audio_path = ""
         # FPS réellement atteint, mesuré à l'arrêt (voir stop_recording)
         self.actual_fps = float(fps)
+        self._t0 = None
 
         self.filter_chain = FilterChain(
             filters or [],
@@ -160,6 +161,8 @@ class RecorderCore:
 
         self.output_path = output_path
         self.is_recording = True
+        # Origine de temps commune à la vidéo et au son système
+        self._t0 = time.time()
         self.audio_frames = []
         self._writer = None
         self._raw_video_path = ""
@@ -185,7 +188,7 @@ class RecorderCore:
         # tourner ensemble et seront mixés par FFmpeg
         if self.system_audio_enabled:
             self._system_capture = SystemAudioCapture(gain=self.audio_gain)
-            if not self._system_capture.start():
+            if not self._system_capture.start(reference_time=self._t0):
                 self._system_capture = None
                 msg = ("Son système indisponible "
                        "(installez PyAudioWPatch)")
@@ -367,9 +370,8 @@ class RecorderCore:
 
         # Durée réelle de l'enregistrement : sert à combler le silence
         # final si le son s'est arrêté avant la fin de la capture
-        total = None
-        if self.start_time:
-            total = (datetime.now() - self.start_time).total_seconds()
+        # Même horloge que l'horodatage des chunks (self._t0)
+        total = time.time() - self._t0 if self._t0 else None
 
         with wave.open(str(wav_path), 'wb') as wf:
             wf.setnchannels(self._system_capture.channels or 2)

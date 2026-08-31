@@ -14,6 +14,21 @@ from core.encoder import VideoEncoder
 from .base import PostProcessor, PostProcessResult
 
 
+def _probe_duration(ffmpeg: str, path: str) -> Optional[float]:
+    """Durée réelle d'un média, via ffprobe (None si indisponible)."""
+    ffprobe = ffmpeg.replace('ffmpeg', 'ffprobe')
+    try:
+        result = subprocess.run(
+            [ffprobe, '-v', 'error', '-show_entries', 'format=duration',
+             '-of', 'default=nw=1:nk=1', path],
+            capture_output=True, text=True, timeout=30)
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except Exception:
+        pass
+    return None
+
+
 def _segments_excluding_silences(
         duration: float, silences: List[SilenceSegment]
         ) -> List[Tuple[float, float]]:
@@ -112,6 +127,18 @@ class MagicCutProcessor(PostProcessor):
         except FileNotFoundError as e:
             return PostProcessResult(name=self.name, success=False,
                                      error=str(e))
+
+        # Les silences sont mesurés sur le WAV brut, les coupes appliquées
+        # à la vidéo encodée : leurs durées diffèrent (fps réel, -shortest,
+        # latence de démarrage). Sans remise à l'échelle, chaque coupe
+        # décale le son un peu plus.
+        video_duration = _probe_duration(ffmpeg, video_path)
+        if video_duration and engine.duration and engine.duration > 0.1:
+            ratio = video_duration / engine.duration
+            if abs(ratio - 1.0) > 0.01:
+                segments = [(s * ratio, e * ratio) for s, e in segments]
+                segments = [(s, min(e, video_duration)) for s, e in segments
+                            if s < video_duration]
 
         output_path = str(Path(video_path).with_name(
             Path(video_path).stem + "_cut.mp4"))

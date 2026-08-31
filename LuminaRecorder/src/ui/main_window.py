@@ -67,12 +67,25 @@ class AIOptions:
         return filters
 
     @staticmethod
-    def build_postprocessors(options: dict) -> list:
+    def parse_max_silence(label: str) -> float:
+        """"5 s" -> 5.0 ; "Tous" -> aucune limite (tout silence est coupé)."""
+        if not label or label.strip().lower() in ('tous', 'tout'):
+            return float('inf')
+        digits = ''.join(c for c in label if c.isdigit() or c == '.')
+        try:
+            return float(digits)
+        except ValueError:
+            return 3.0
+
+    @staticmethod
+    def build_postprocessors(options: dict,
+                             max_silence: str = "3 s") -> list:
         procs = []
         if options.get('subtitles'):
             procs.append(SubtitlesProcessor())   # sous-titres AVANT Magic Cut
         if options.get('magic_cut'):
-            procs.append(MagicCutProcessor())
+            procs.append(MagicCutProcessor(
+                max_silence_duration=AIOptions.parse_max_silence(max_silence)))
         return procs
 
 
@@ -314,6 +327,8 @@ class MainWindow:
         ]
         for key, label in labels:
             var = tk.BooleanVar(value=self.ai_options.get(key, False))
+            if key == 'magic_cut':
+                label = "Couper les silences de plus de"
             cb = tk.Checkbutton(ai_card, text=label, variable=var,
                                 bg=self.colors['bg_secondary'],
                                 fg=self.colors['text_primary'],
@@ -330,6 +345,23 @@ class MainWindow:
             cb.config(state=state)
             cb.pack(fill=tk.X, padx=5)
             self.ai_vars[key] = var
+
+            # Seuil de Magic Cut : figé à 3 s auparavant, ce qui protégeait
+            # les longues pauses mais empêchait de supprimer les temps de
+            # navigation (chercher une page, lancer une vidéo…)
+            if key == 'magic_cut':
+                self.magic_cut_max_var = tk.StringVar(
+                    value=self.config.get('recording', 'magic_cut_max',
+                                          fallback="3 s"))
+                seuil = ttk.Combobox(ai_card,
+                                     textvariable=self.magic_cut_max_var,
+                                     values=["1 s", "2 s", "3 s", "5 s",
+                                             "10 s", "30 s", "Tous"],
+                                     state="readonly", width=8,
+                                     font=("Segoe UI", 8))
+                seuil.pack(anchor='w', padx=(24, 5), pady=(0, 4))
+                seuil.bind("<<ComboboxSelected>>",
+                           self._on_magic_cut_max_changed)
 
         # === FOOTER ===
         footer_frame = tk.Frame(self.root, bg=self.colors['bg_secondary'], height=60)
@@ -394,6 +426,11 @@ Vous pouvez les modifier manuellement si nécessaire.
     def _on_mic_toggled(self):
         """Persiste l'activation du micro"""
         self.config.set('recording', 'audio_enabled', self.mic_var.get())
+
+    def _on_magic_cut_max_changed(self, event=None):
+        """Persiste le seuil de coupure des silences"""
+        self.config.set('recording', 'magic_cut_max',
+                        self.magic_cut_max_var.get())
 
     def _on_system_audio_toggled(self):
         """Persiste l'activation du son système"""
@@ -523,7 +560,8 @@ Vous pouvez les modifier manuellement si nécessaire.
                     self.status_label.config(text="✓ Enregistrement terminé !",
                                             fg=self.colors['success'])
                     options = {k: v.get() for k, v in self.ai_vars.items()}
-                    processors = AIOptions.build_postprocessors(options)
+                    processors = AIOptions.build_postprocessors(
+                        options, self.magic_cut_max_var.get())
                     if processors:
                         self._run_postprocessing(final_path, processors, preserved_audio)
                     else:

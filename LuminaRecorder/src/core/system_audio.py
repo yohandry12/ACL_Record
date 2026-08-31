@@ -83,15 +83,21 @@ class SystemAudioCapture:
         samples = np.clip(samples * self.gain, -32768, 32767).astype(np.int16)
         return samples.tobytes()
 
-    def start(self) -> bool:
-        """Ouvre le flux loopback. False si indisponible (jamais d'exception)."""
+    def start(self, reference_time: Optional[float] = None) -> bool:
+        """Ouvre le flux loopback. False si indisponible (jamais d'exception).
+
+        `reference_time` (time.time() du début de l'enregistrement) permet
+        de dater les chunks sur la même horloge que la vidéo. Sans lui,
+        l'origine serait l'ouverture du loopback — postérieure de plus
+        d'une seconde — et le son se retrouverait décalé.
+        """
         device = find_loopback_device()
         if device is None:
             return False
 
         self.frames = []
         self._timestamps = []
-        self._start_time = time.time()
+        self._start_time = reference_time if reference_time else time.time()
         try:
             self._pa = pyaudiowpatch.PyAudio()
             self.sample_rate = int(device['defaultSampleRate'])

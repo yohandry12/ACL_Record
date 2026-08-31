@@ -90,3 +90,58 @@ def test_no_silences_returns_success_without_output(tmp_path):
     result = proc.run(str(video), str(audio), lambda p: None)
     assert result.success is True
     assert result.output_path is None  # rien coupé, original conservé
+
+
+def test_probe_duration_reads_real_media(tmp_path):
+    if FFMPEG is None:
+        pytest.skip("FFmpeg absent")
+    from postprocess.magic_cut_processor import _probe_duration
+    video = tmp_path / "v.mp4"
+    subprocess.run([FFMPEG, "-y", "-f", "lavfi", "-i",
+                    "color=c=red:s=64x48:d=3", "-r", "10", str(video)],
+                   check=True, capture_output=True)
+    duration = _probe_duration(FFMPEG, str(video))
+    assert duration is not None
+    assert 2.8 < duration < 3.3
+
+
+def test_probe_duration_returns_none_on_bad_file(tmp_path):
+    if FFMPEG is None:
+        pytest.skip("FFmpeg absent")
+    from postprocess.magic_cut_processor import _probe_duration
+    bad = tmp_path / "pasunevideo.mp4"
+    bad.write_bytes(b"nimporte quoi")
+    assert _probe_duration(FFMPEG, str(bad)) is None
+
+
+@pytest.mark.skipif(FFMPEG is None, reason="FFmpeg absent du PATH")
+def test_long_silence_cut_when_threshold_raised(tmp_path):
+    """Avec un seuil élevé, les temps de navigation sont supprimés."""
+    video = tmp_path / "in.mp4"
+    subprocess.run([FFMPEG, "-y", "-f", "lavfi", "-i",
+                    "color=c=blue:s=160x120:d=20", "-r", "10", str(video)],
+                   check=True, capture_output=True)
+
+    # 12 s de navigation silencieuse, puis 8 s de son
+    audio = tmp_path / "in.wav"
+    rate = 8000
+    t = np.linspace(0, 8.0, rate * 8)
+    voix = (np.sin(2 * np.pi * 200 * t) * 12000).astype(np.int16)
+    signal = np.concatenate([np.zeros(rate * 12, dtype=np.int16), voix])
+    with wave.open(str(audio), 'wb') as wf:
+        wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(rate)
+        wf.writeframes(signal.tobytes())
+
+    proc = MagicCutProcessor(silence_threshold=0.02,
+                             min_silence_duration=0.5,
+                             max_silence_duration=float('inf'))
+    result = proc.run(str(video), str(audio), lambda p: None)
+    assert result.success is True
+
+    out = tmp_path / "in_cut.mp4"
+    probe = subprocess.run(
+        [FFMPEG.replace("ffmpeg", "ffprobe"), "-v", "error",
+         "-show_entries", "format=duration", "-of", "csv=p=0", str(out)],
+        capture_output=True, text=True)
+    duration = float(probe.stdout.strip())
+    assert duration < 12.0   # les 12 s de navigation ont sauté
