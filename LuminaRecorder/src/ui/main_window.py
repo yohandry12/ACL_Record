@@ -369,15 +369,26 @@ Vous pouvez les modifier manuellement si nécessaire.
             
             if result:
                 self.current_video_path, self.current_audio_path = result
-                
+
                 # Lancement de l'encodage
                 self.status_label.config(text="⏳ Encodage en cours...")
                 self.root.update()
-                
+
+                # Préserver le WAV pour le post-traitement (l'encodeur
+                # supprime les temporaires après fusion)
+                options = {k: v.get() for k, v in self.ai_vars.items()}
+                needs_audio_later = options.get('subtitles') or options.get('magic_cut')
+                preserved_audio = None
+                if needs_audio_later and self.current_audio_path \
+                        and os.path.exists(self.current_audio_path):
+                    import shutil
+                    preserved_audio = self.current_audio_path + ".keep.wav"
+                    shutil.copyfile(self.current_audio_path, preserved_audio)
+
                 # Encodage FFmpeg
                 encoder = VideoEncoder()
                 final_path = self.current_video_path.replace('.avi', '_final.mp4')
-                
+
                 success = encoder.encode(
                     video_path=self.current_video_path,
                     audio_path=self.current_audio_path,
@@ -387,11 +398,17 @@ Vous pouvez les modifier manuellement si nécessaire.
                     bitrate=self.bitrate_var.get(),
                     audio_gain=self.volume_slider.get()
                 )
-                
+
                 if success:
                     self.status_label.config(text="✓ Enregistrement terminé !",
                                             fg=self.colors['success'])
-                    messagebox.showinfo("Succès", f"Vidéo sauvegardée :\n{final_path}")
+                    options = {k: v.get() for k, v in self.ai_vars.items()}
+                    processors = AIOptions.build_postprocessors(options)
+                    if processors:
+                        self._run_postprocessing(final_path, processors, preserved_audio)
+                    else:
+                        messagebox.showinfo(
+                            "Succès", f"Vidéo sauvegardée :\n{final_path}")
                 else:
                     self.status_label.config(text="✗ Erreur d'encodage",
                                             fg=self.colors['danger'])
@@ -401,7 +418,59 @@ Vous pouvez les modifier manuellement si nécessaire.
         self.record_btn.config(text="● COMMENCER L'ENREGISTREMENT",
                               bg_color=self.colors['accent'])
         self.timer_label.config(text="00:00:00")
-        
+
+    def _run_postprocessing(self, video_path, processors, audio_path=None):
+        """Exécute les post-processeurs dans un thread avec fenêtre de
+        progression. La UI n'est jamais gelée ; tkinter n'est touché que
+        via root.after."""
+        import threading
+
+        progress_win = tk.Toplevel(self.root)
+        progress_win.title("Traitement IA en cours...")
+        progress_win.geometry("400x120")
+        progress_win.transient(self.root)
+        progress_win.grab_set()
+
+        step_label = tk.Label(progress_win, text="Préparation...",
+                              font=("Segoe UI", 10))
+        step_label.pack(pady=(15, 5))
+        bar = ttk.Progressbar(progress_win, maximum=1.0, length=350)
+        bar.pack(pady=5)
+
+        def on_progress(p):
+            self.root.after(0, lambda: bar.config(value=p))
+
+        def on_step(name):
+            self.root.after(0, lambda: step_label.config(
+                text=f"Étape : {name}..."))
+
+        def worker():
+            results = run_postprocessors(processors, video_path,
+                                         audio_path, on_progress,
+                                         step_cb=on_step)
+            if audio_path and os.path.exists(audio_path):
+                try:
+                    os.remove(audio_path)  # copie .keep.wav temporaire
+                except OSError:
+                    pass
+            self.root.after(0, lambda: self._show_postprocess_summary(
+                video_path, results, progress_win))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_postprocess_summary(self, video_path, results, progress_win):
+        """Résumé final : la vidéo est TOUJOURS annoncée comme sauvegardée."""
+        progress_win.destroy()
+        lines = [f"✓ Vidéo sauvegardée :\n{video_path}\n"]
+        for r in results:
+            if r.success and r.output_path:
+                lines.append(f"✓ {r.name} : {os.path.basename(r.output_path)}")
+            elif r.success:
+                lines.append(f"✓ {r.name} : {r.error or 'rien à faire'}")
+            else:
+                lines.append(f"✗ {r.name} échoué : {r.error}")
+        messagebox.showinfo("Traitement terminé", "\n".join(lines))
+
     def _start_timer(self):
         """Démarre le compteur de temps"""
         self.start_time = datetime.now()
