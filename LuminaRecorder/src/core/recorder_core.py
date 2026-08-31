@@ -177,7 +177,12 @@ class RecorderCore:
         # le premier chunk pour que les deux pistes commencent ensemble,
         # sinon -shortest tronque la vidéo de cette seconde.
         if self.audio_enabled:
-            self._audio_ready.clear()
+            # Nouvel Event plutôt que .clear() : si le thread audio du run
+            # précédent est encore vivant (join(timeout=2.0) sans vérifier
+            # son retour), son `finally: self._audio_ready.set()` tardif
+            # ne doit pas débloquer la vidéo de CE run. Il gardera une
+            # référence à l'ancien Event, inoffensive.
+            self._audio_ready = threading.Event()
             self.audio_thread = threading.Thread(target=self._capture_audio)
             self.audio_thread.daemon = True
             self.audio_thread.start()
@@ -298,6 +303,7 @@ class RecorderCore:
         buffer pendant que la vidéo occupait l'interpréteur.
         """
         p = pyaudio.PyAudio()
+        stream = None
 
         def on_chunk(in_data, frame_count, time_info, status):
             self.audio_frames.append(self._apply_gain(in_data))
@@ -317,9 +323,6 @@ class RecorderCore:
             stream.start_stream()
             while self.is_recording and stream.is_active():
                 time.sleep(0.05)
-                
-            stream.stop_stream()
-            stream.close()
         except Exception as e:
             # La vidéo continue sans son : on prévient l'utilisateur au
             # lieu d'échouer en silence
@@ -327,6 +330,15 @@ class RecorderCore:
             if self.on_audio_error:
                 self.on_audio_error(str(e))
         finally:
+            # Fermer le stream avant de terminer PyAudio : un stream encore
+            # actif au moment de p.terminate() est un comportement non
+            # défini côté PortAudio (crash ou handle audio bloqué).
+            if stream is not None:
+                try:
+                    stream.stop_stream()
+                    stream.close()
+                except Exception:
+                    pass
             # Ne jamais laisser la vidéo attendre un audio qui ne viendra pas
             self._audio_ready.set()
             p.terminate()

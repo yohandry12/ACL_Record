@@ -135,7 +135,11 @@ class MagicCutProcessor(PostProcessor):
         video_duration = _probe_duration(ffmpeg, video_path)
         if video_duration and engine.duration and engine.duration > 0.1:
             ratio = video_duration / engine.duration
-            if abs(ratio - 1.0) > 0.01:
+            # Un ratio hors de cette plage signale que les deux pistes ne
+            # décrivent pas la même chose (ex. amix duration=longest avec
+            # le son système) : mieux vaut ne pas redimensionner que
+            # d'étirer les coupes.
+            if 0.8 < ratio < 1.25 and abs(ratio - 1.0) > 0.01:
                 segments = [(s * ratio, e * ratio) for s, e in segments]
                 segments = [(s, min(e, video_duration)) for s, e in segments
                             if s < video_duration]

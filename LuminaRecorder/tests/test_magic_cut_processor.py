@@ -5,6 +5,7 @@ import wave
 import numpy as np
 import pytest
 
+import postprocess.magic_cut_processor as magic_cut_processor_module
 from postprocess.magic_cut_processor import (MagicCutProcessor,
                                              build_ffmpeg_cut_command)
 
@@ -145,3 +146,93 @@ def test_long_silence_cut_when_threshold_raised(tmp_path):
         capture_output=True, text=True)
     duration = float(probe.stdout.strip())
     assert duration < 12.0   # les 12 s de navigation ont sauté
+
+
+def _run_with_stubbed_ffmpeg(monkeypatch, tmp_path, video_duration):
+    """Exécute MagicCutProcessor.run() en simulant FFmpeg : capture les
+    segments réellement passés à build_ffmpeg_cut_command sans exécuter
+    de vrai encodage (I3 : vérifie uniquement la logique de mise à
+    l'échelle du ratio)."""
+    audio = tmp_path / "in.wav"
+    _write_wav_with_silences(audio, duration=10.0)  # silences à 2-3,5-6,7.5-8.5s
+    video = tmp_path / "in.mp4"
+    video.write_bytes(b"fake")
+
+    monkeypatch.setattr(magic_cut_processor_module, "_probe_duration",
+                        lambda ffmpeg, path: video_duration)
+    monkeypatch.setattr(
+        magic_cut_processor_module.VideoEncoder, "_find_ffmpeg",
+        lambda self: "ffmpeg")
+
+    captured = {}
+    real_build = magic_cut_processor_module.build_ffmpeg_cut_command
+
+    def spy_build(ffmpeg, input_path, segments, output_path, has_audio):
+        captured["segments"] = segments
+        return real_build(ffmpeg, input_path, segments, output_path,
+                          has_audio)
+
+    monkeypatch.setattr(magic_cut_processor_module, "build_ffmpeg_cut_command",
+                        spy_build)
+
+    class FakeCompleted:
+        returncode = 0
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run",
+                        lambda *a, **k: FakeCompleted())
+
+    proc = MagicCutProcessor(silence_threshold=0.02,
+                             min_silence_duration=0.5,
+                             max_silence_duration=3.0)
+    result = proc.run(str(video), str(audio), lambda p: None)
+    assert result.success is True
+    return captured["segments"]
+
+
+def test_ratio_out_of_range_leaves_segments_unchanged(monkeypatch, tmp_path):
+    """I3 : ratio hors plage plausible (ex. son système avec
+    amix duration=longest, vidéo bien plus longue que le micro) ->
+    on ne redimensionne pas, les segments gardent la durée du WAV."""
+    audio = tmp_path / "in.wav"
+    _write_wav_with_silences(audio, duration=10.0)
+
+    from postprocess.magic_cut_processor import _segments_excluding_silences
+    from ai.magic_cut import MagicCutEngine
+    engine = MagicCutEngine(silence_threshold=0.02, min_silence_duration=0.5,
+                            max_silence_duration=3.0)
+    engine.load_audio_file(str(audio))
+    silences = engine.detect_silences()
+    expected_unscaled = _segments_excluding_silences(engine.duration, silences)
+
+    # Vidéo 2x plus longue que le WAV micro -> ratio ~= 2.0, hors (0.8, 1.25)
+    segments = _run_with_stubbed_ffmpeg(monkeypatch, tmp_path,
+                                        video_duration=engine.duration * 2.0)
+
+    assert segments == expected_unscaled
+
+
+def test_ratio_within_range_scales_segments(monkeypatch, tmp_path):
+    """I3 : ratio plausible (léger décalage fps réel / -shortest) ->
+    les segments sont bien mis à l'échelle."""
+    audio = tmp_path / "in.wav"
+    _write_wav_with_silences(audio, duration=10.0)
+
+    from postprocess.magic_cut_processor import _segments_excluding_silences
+    from ai.magic_cut import MagicCutEngine
+    engine = MagicCutEngine(silence_threshold=0.02, min_silence_duration=0.5,
+                            max_silence_duration=3.0)
+    engine.load_audio_file(str(audio))
+    silences = engine.detect_silences()
+    unscaled = _segments_excluding_silences(engine.duration, silences)
+
+    ratio = 1.1  # dans (0.8, 1.25)
+    video_duration = engine.duration * ratio
+    expected = [(s * ratio, min(e * ratio, video_duration))
+                for s, e in unscaled if s * ratio < video_duration]
+
+    segments = _run_with_stubbed_ffmpeg(monkeypatch, tmp_path,
+                                        video_duration=video_duration)
+
+    assert segments != unscaled
+    assert segments == expected

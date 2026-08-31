@@ -1,9 +1,12 @@
+import threading
+
 import numpy as np
 import cv2
 import pytest
 
 from core.recorder_core import RecorderCore
 from filters.base import FrameFilter
+import core.recorder_core as recorder_core_module
 
 
 class WhiteFilter(FrameFilter):
@@ -65,3 +68,99 @@ def test_capture_error_stops_recording_and_notifies(tmp_path):
     rec._capture_screen()  # appel direct, synchrone
     assert rec.is_recording is False
     assert errors and "écran perdu" in errors[0]
+
+
+def test_start_recording_uses_fresh_audio_ready_event(tmp_path, monkeypatch):
+    """C1 : deux enregistrements successifs ne doivent pas partager le
+    même Event. Si le thread audio du run précédent est encore vivant à
+    l'appel suivant, son `finally: set()` tardif ne doit pas débloquer
+    prématurément le second run."""
+    rec = RecorderCore(resolution="160x120", fps=10, audio_enabled=True)
+    rec._temp_dir = str(tmp_path)
+
+    # Empêche le vrai thread audio de démarrer (pas de matériel requis) :
+    # on veut seulement observer l'identité/état de l'Event.
+    monkeypatch.setattr(rec, "_capture_audio", lambda: None)
+
+    rec.start_recording(str(tmp_path / "out.mp4"))
+    first_event = rec._audio_ready
+    rec.is_recording = False
+    if rec.recording_thread:
+        rec.recording_thread.join(timeout=2.0)
+    if rec.audio_thread:
+        rec.audio_thread.join(timeout=2.0)
+
+    # Simule le thread précédent encore vivant : il "set()" son ancien
+    # Event après le second clear/remplacement.
+    first_event.clear()
+
+    rec.start_recording(str(tmp_path / "out2.mp4"))
+    second_event = rec._audio_ready
+    rec.is_recording = False
+    if rec.recording_thread:
+        rec.recording_thread.join(timeout=2.0)
+    if rec.audio_thread:
+        rec.audio_thread.join(timeout=2.0)
+
+    assert second_event is not first_event
+    assert not second_event.is_set()  # non déjà armé par le run précédent
+
+    # L'ancien Event peut être signalé sans effet sur le nouveau
+    first_event.set()
+    assert not second_event.is_set()
+
+
+class _FakeStream:
+    """Faux stream PyAudio dont start_stream() lève (micro débranché)."""
+
+    def __init__(self):
+        self.stop_called = False
+        self.close_called = False
+
+    def start_stream(self):
+        raise OSError("micro débranché")
+
+    def is_active(self):
+        return False
+
+    def stop_stream(self):
+        self.stop_called = True
+
+    def close(self):
+        self.close_called = True
+
+
+class _FakePyAudio:
+    instances = []
+
+    def __init__(self):
+        self.terminated = False
+        self.stream = None
+        _FakePyAudio.instances.append(self)
+
+    def open(self, **kwargs):
+        self.stream = _FakeStream()
+        return self.stream
+
+    def terminate(self):
+        self.terminated = True
+
+
+def test_capture_audio_closes_stream_before_terminate_on_error(monkeypatch):
+    """C2 : si start_stream() lève, le stream doit être stop/close AVANT
+    p.terminate() (comportement non défini sinon côté PortAudio)."""
+    _FakePyAudio.instances = []
+    monkeypatch.setattr(recorder_core_module.pyaudio, "PyAudio", _FakePyAudio)
+
+    rec = RecorderCore(resolution="160x120", fps=10, audio_enabled=True)
+    rec.is_recording = True
+
+    rec._capture_audio()  # appel direct, synchrone
+
+    assert len(_FakePyAudio.instances) == 1
+    p = _FakePyAudio.instances[0]
+    assert p.stream is not None
+    assert p.stream.stop_called is True
+    assert p.stream.close_called is True
+    assert p.terminated is True
+    assert rec._audio_ready.is_set()  # la vidéo ne doit jamais rester bloquée

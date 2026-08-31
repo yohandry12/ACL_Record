@@ -22,11 +22,13 @@ class InvertFilter(FrameFilter):
 class SlowFilter(FrameFilter):
     name = "slow"
 
-    def __init__(self, delay=0.02):
+    def __init__(self, delay=0.001):
         super().__init__()
         self.delay = delay
 
     def process(self, frame):
+        # Court : les tests utilisent un budget nul ou une horloge simulée
+        # plutôt que d'attendre réellement
         time.sleep(self.delay)
         return frame
 
@@ -59,7 +61,8 @@ def test_disabled_filter_is_skipped():
 def test_slow_filter_disabled_after_30_consecutive_slow_frames():
     disabled = []
     f = SlowFilter(delay=0.02)
-    chain = FilterChain([f], frame_budget=0.001,
+    # Budget nul : toute frame dépasse, quel que soit l'état de la machine
+    chain = FilterChain([f], frame_budget=0.0,
                         on_disable=disabled.append, max_slow_frames=30)
     frame = make_frame()
     for _ in range(30):
@@ -69,18 +72,45 @@ def test_slow_filter_disabled_after_30_consecutive_slow_frames():
     assert chain.active_count == 0
 
 
-def test_fast_frame_resets_slow_counter():
-    f = SlowFilter(delay=0.02)
+def test_fast_frame_resets_slow_counter(monkeypatch):
+    """Horloge simulée : mesurer le temps réel rendrait ce test instable
+    (une frame « rapide » peut dépasser le budget si la machine est
+    chargée, et le filtre serait désactivé à tort)."""
+    from filters import base as filters_base
+
+    horloge = {'t': 0.0}
+    monkeypatch.setattr(filters_base.time, 'perf_counter',
+                        lambda: horloge['t'])
+
+    class FiltreControle(FrameFilter):
+        name = "controle"
+
+        def __init__(self):
+            super().__init__()
+            self.cout = 0.02          # dépasse le budget
+
+        def process(self, frame):
+            horloge['t'] += self.cout
+            return frame
+
+    f = FiltreControle()
     chain = FilterChain([f], frame_budget=0.001, max_slow_frames=30)
     frame = make_frame()
-    for _ in range(29):
+
+    for _ in range(29):               # 29 frames lentes : pas encore 30
         chain.process(frame)
-    f.delay = 0.0  # devient rapide : le compteur doit se réinitialiser
+    assert f.enabled is True
+
+    f.cout = 0.0                      # une frame rapide remet le compteur à 0
     chain.process(frame)
-    f.delay = 0.02
-    for _ in range(29):
+
+    f.cout = 0.02
+    for _ in range(29):               # 29 de plus : toujours pas 30 d'affilée
         chain.process(frame)
-    assert f.enabled is True  # jamais 30 lentes consécutives
+    assert f.enabled is True
+
+    chain.process(frame)              # la 30e consécutive déclenche
+    assert f.enabled is False
 
 
 def test_crashing_filter_disabled_immediately_frame_preserved():

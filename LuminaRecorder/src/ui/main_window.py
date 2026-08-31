@@ -108,6 +108,10 @@ class MainWindow:
         self.config = ConfigManager()
         self.ai_options = AIOptions.load(self.config)
 
+        # Purge des .keep.wav orphelins d'une session précédente
+        # interrompue (crash, fermeture pendant le post-traitement)
+        self._purge_temp_files()
+
         # Variables d'état
         self.is_recording = False
         self.recorder = None
@@ -119,7 +123,20 @@ class MainWindow:
         
         # Affichage du rapport système
         self._show_system_welcome()
-        
+
+    def _purge_temp_files(self):
+        """Supprime les .keep.wav orphelins de temp/ (copies préservées
+        pour un post-traitement interrompu avant nettoyage)."""
+        temp_dir = Path(os.getcwd()) / "temp"
+        try:
+            for f in temp_dir.glob("*.keep.wav"):
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
     def _setup_styles(self):
         """Configure les styles globaux"""
         style = ttk.Style()
@@ -328,7 +345,7 @@ class MainWindow:
         for key, label in labels:
             var = tk.BooleanVar(value=self.ai_options.get(key, False))
             if key == 'magic_cut':
-                label = "Couper les silences de plus de"
+                label = "Couper les silences jusqu'à"
             cb = tk.Checkbutton(ai_card, text=label, variable=var,
                                 bg=self.colors['bg_secondary'],
                                 fg=self.colors['text_primary'],
@@ -359,7 +376,15 @@ class MainWindow:
                                              "10 s", "30 s", "Tous"],
                                      state="readonly", width=8,
                                      font=("Segoe UI", 8))
-                seuil.pack(anchor='w', padx=(24, 5), pady=(0, 4))
+                seuil.pack(anchor='w', padx=(24, 5), pady=(0, 0))
+                tk.Label(ai_card,
+                         text="(« Tous » supprime aussi les longues pauses,\n"
+                              "ex. le temps de lancer une vidéo)",
+                         font=("Segoe UI", 7),
+                         bg=self.colors['bg_secondary'],
+                         fg=self.colors['text_secondary'],
+                         justify=tk.LEFT).pack(anchor='w', padx=(24, 5),
+                                               pady=(0, 4))
                 seuil.bind("<<ComboboxSelected>>",
                            self._on_magic_cut_max_changed)
 
@@ -609,14 +634,19 @@ Vous pouvez les modifier manuellement si nécessaire.
                 text=f"Étape : {name}..."))
 
         def worker():
-            results = run_postprocessors(processors, video_path,
-                                         audio_path, on_progress,
-                                         step_cb=on_step)
-            if audio_path and os.path.exists(audio_path):
-                try:
-                    os.remove(audio_path)  # copie .keep.wav temporaire
-                except OSError:
-                    pass
+            try:
+                results = run_postprocessors(processors, video_path,
+                                             audio_path, on_progress,
+                                             step_cb=on_step)
+            finally:
+                # Dans le finally : même si run_postprocessors lève ou que
+                # l'app est fermée pendant le traitement, le .keep.wav ne
+                # doit pas rester dans temp/ (plusieurs centaines de Mo/h).
+                if audio_path and os.path.exists(audio_path):
+                    try:
+                        os.remove(audio_path)  # copie .keep.wav temporaire
+                    except OSError:
+                        pass
             self.root.after(0, lambda: self._show_postprocess_summary(
                 video_path, results, progress_win))
 
