@@ -1,0 +1,496 @@
+/* Lumina Recorder — direction « studio professionnel sombre »
+ *
+ * Référence : DaVinci Resolve, Ableton Live. Un gris neutre et un seul
+ * accent chaud, parce que l'application s'ouvre tous les jours : un
+ * thème saturé fatigue là où un gris reste lisible.
+ *
+ * Contrainte de composition : l'écran cible fait 1366×768. Dense sans
+ * être serré — pas de grands vides façon page d'accueil.
+ */
+
+:root {
+  --bg-base: #131417;
+  --bg-panel: #1A1C20;
+  --bg-elevated: #22252A;
+  --bg-hover: #2A2E34;
+  --border: #2E3238;
+  --border-bright: #3D424A;
+
+  --text: #E8EAED;
+  --text-dim: #9AA0A6;
+  --text-faint: #6B7178;
+
+  --accent: #F59E0B;
+  --accent-soft: rgba(245, 158, 11, 0.14);
+  --rec: #EF4444;
+  --rec-soft: rgba(239, 68, 68, 0.16);
+  --ok: #34D399;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Police variable si présente, sinon repli système. Rien n'est
+   * téléchargé : l'application doit fonctionner hors ligne. */
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  overflow: hidden;
+  /* Une interface applicative ne se sélectionne pas au glissement */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Barre de titre ---------- */
+
+.titlebar {
+  height: 38px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 6px 0 14px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  /* Zone de glissement de la fenêtre (pywebview lit cet attribut) */
+  -webkit-app-region: drag;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+}
+
+.brand-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.titlebar-spacer { flex: 1; }
+
+.profile-tag {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-right: 8px;
+}
+
+.win-controls { display: flex; -webkit-app-region: no-drag; }
+
+.win-btn {
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  background: none; border: 0;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 120ms var(--ease), color 120ms var(--ease);
+}
+.win-btn:hover { background: var(--bg-hover); color: var(--text); }
+.win-btn.close:hover { background: #C42B1C; color: #fff; }
+
+/* ---------- Zone principale ---------- */
+
+.stage {
+  flex: none;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 18px 0 14px;
+}
+
+.record-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 34px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  /* transform et opacity uniquement : animer width/height forcerait un
+   * recalcul de mise en page à chaque image */
+  transition: transform 150ms var(--ease),
+              background 150ms var(--ease),
+              border-color 150ms var(--ease),
+              box-shadow 150ms var(--ease);
+}
+
+.record-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+
+.record-btn:active:not(:disabled) { transform: translateY(0); }
+
+.record-btn:disabled { opacity: 0.45; cursor: default; }
+
+.record-btn .dot {
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: var(--rec);
+  flex: none;
+}
+
+/* Pendant l'enregistrement : pulsation lente, pas clignotante */
+body[data-state="recording"] .record-btn {
+  background: var(--rec-soft);
+  border-color: var(--rec);
+}
+
+body[data-state="recording"] .record-btn .dot {
+  animation: pulse 2s var(--ease) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.82); }
+}
+
+body[data-state="pending"] .record-btn {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.hotkey-badge {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.timer {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 22px;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  /* Chiffres de largeur fixe : sinon le compteur tressaute à chaque
+   * seconde quand un 1 remplace un 8 */
+  font-variant-numeric: tabular-nums;
+  transition: color 200ms var(--ease);
+}
+
+body[data-state="recording"] .timer { color: var(--text); }
+
+.status {
+  min-height: 16px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 0 20px;
+}
+.status.error { color: var(--rec); }
+.status.ok { color: var(--ok); }
+
+/* ---------- Panneaux de réglages ---------- */
+
+.panels {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 0 16px 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  /* Chaque colonne defile pour elle-meme : sinon le panneau IA, plus
+   * long que les autres, pousserait toute la grille hors de l'ecran */
+  overflow-y: auto;
+  min-height: 0;
+  /* État de départ de l'animation d'entrée en cascade */
+  opacity: 0;
+  transform: translateY(10px);
+  animation: rise 420ms var(--ease) forwards;
+}
+
+.panel:nth-child(1) { animation-delay: 40ms; }
+.panel:nth-child(2) { animation-delay: 100ms; }
+.panel:nth-child(3) { animation-delay: 160ms; }
+
+@keyframes rise {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.panel h2 {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; color: var(--text-dim); }
+
+select, .btn-sub {
+  width: 100%;
+  padding: 7px 9px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 150ms var(--ease), background 150ms var(--ease);
+}
+select:hover, .btn-sub:hover {
+  border-color: var(--border-bright);
+  background: var(--bg-hover);
+}
+select:focus-visible, .btn-sub:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+select:disabled { opacity: 0.4; cursor: default; }
+
+/* ---------- Cases à cocher ---------- */
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 5px 6px;
+  margin: 0 -6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 130ms var(--ease);
+}
+.check:hover:not(.disabled) { background: var(--bg-elevated); }
+
+.check.disabled { cursor: default; opacity: 0.42; }
+
+.check input { position: absolute; opacity: 0; pointer-events: none; }
+
+.box {
+  flex: none;
+  width: 15px; height: 15px;
+  margin-top: 1px;
+  border: 1.5px solid var(--border-bright);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  display: grid;
+  place-items: center;
+  transition: background 140ms var(--ease), border-color 140ms var(--ease);
+}
+
+.box svg {
+  width: 10px; height: 10px;
+  stroke: var(--bg-base);
+  stroke-width: 3.5;
+  fill: none;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 140ms var(--ease), transform 140ms var(--ease);
+}
+
+.check input:checked + .box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.check input:checked + .box svg { opacity: 1; transform: scale(1); }
+
+.check-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.check-label { font-size: 12px; line-height: 1.35; }
+.check-hint {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  line-height: 1.35;
+}
+
+.indent { margin-left: 24px; }
+
+/* ---------- Curseur de volume ---------- */
+
+input[type="range"] {
+  width: 100%;
+  height: 4px;
+  appearance: none;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-panel);
+  transition: transform 130ms var(--ease);
+}
+input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.2); }
+
+.range-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* ---------- Progression ---------- */
+
+.progress-wrap {
+  padding: 0 16px 12px;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+}
+body[data-state="processing"] .progress-wrap { display: flex; }
+
+.progress-track {
+  height: 3px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 300ms var(--ease);
+}
+.progress-step { font-size: 11px; color: var(--text-dim); }
+
+/* ---------- Barre compacte (pendant l'enregistrement) ---------- */
+
+body.compact { background: transparent; }
+body.compact .titlebar,
+body.compact .stage,
+body.compact .panels,
+body.compact .progress-wrap { display: none; }
+
+.compact-bar { display: none; }
+
+body.compact .compact-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 100%;
+  padding: 0 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  -webkit-app-region: drag;
+}
+
+.compact-bar .dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--rec);
+  animation: pulse 2s var(--ease) infinite;
+  flex: none;
+}
+
+.compact-bar .timer {
+  font-size: 17px;
+  color: var(--text);
+  flex: 1;
+}
+
+.compact-bar button {
+  -webkit-app-region: no-drag;
+  padding: 6px 14px;
+  background: var(--rec-soft);
+  border: 1px solid var(--rec);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms var(--ease);
+}
+.compact-bar button:hover { background: var(--rec); }
+
+/* ---------- Résultat ---------- */
+
+.result {
+  display: none;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 12px;
+  margin: 0 16px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--ok);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+}
+.result.visible { display: flex; }
+.result .path {
+  flex: 1;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Accessibilité ---------- */
+
+/* Certains utilisateurs ont des troubles vestibulaires : l'animation
+ * n'est pas une préférence esthétique pour eux. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .panel { opacity: 1; transform: none; }
+}
+
+::-webkit-scrollbar { width: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid var(--bg-base);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }

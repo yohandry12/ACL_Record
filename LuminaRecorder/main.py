@@ -57,7 +57,10 @@ from core.window_detect import enable_dpi_awareness
 # à côté.
 enable_dpi_awareness()
 
-from ui.main_window import MainWindow
+def run_classic():
+    """Interface tkinter historique."""
+    from ui.main_window import MainWindow
+    MainWindow().run()
 
 
 def main():
@@ -67,12 +70,28 @@ def main():
     print("║  Capturez votre monde en clarté    ║")
     print("╚════════════════════════════════════╝")
     print()
-    
+
     try:
-        # Lancement de l'interface graphique
-        app = MainWindow()
-        app.run()
-        
+        # --classic force l'ancienne interface. Elle est conservée le
+        # temps que la nouvelle soit éprouvée à l'usage : un défaut
+        # bloquant ne doit laisser personne sans application utilisable.
+        if '--classic' in sys.argv:
+            run_classic()
+            return 0
+
+        from webui.app import run, webview_is_available
+        available, reason = webview_is_available()
+        if not available:
+            # Repli plutôt que plantage : mieux vaut l'ancienne interface
+            # qu'aucune interface, et l'utilisateur doit savoir pourquoi
+            print(f"[Lumina] Interface web indisponible : {reason}")
+            print("[Lumina] Bascule sur l'interface classique.")
+            run_classic()
+            return 0
+
+        return run()
+
+
     except KeyboardInterrupt:
         print("\n[Lumina] Application fermée par l'utilisateur.")
     except Exception as e:

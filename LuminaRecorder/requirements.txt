@@ -32,3 +32,7 @@ packaging>=23.0
 
 # Outils de build (pour développement)
 # pyinstaller>=6.0.0
+
+# Interface web (fenêtre native pilotée par HTML/CSS)
+# Sans ce paquet, Lumina bascule sur l'interface tkinter classique
+pywebview>=5.0

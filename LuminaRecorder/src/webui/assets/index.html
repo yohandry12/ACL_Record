@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Lumina Recorder</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-state="idle">
+
+<!-- Barre compacte : seule chose visible pendant l'enregistrement -->
+<div class="compact-bar">
+  <span class="dot"></span>
+  <span class="timer" id="compact-timer">00:00:00</span>
+  <button id="compact-stop">Arrêter</button>
+</div>
+
+<header class="titlebar">
+  <div class="brand"><span class="brand-dot"></span>LUMINA</div>
+  <div class="titlebar-spacer"></div>
+  <span class="profile-tag" id="profile">—</span>
+  <div class="win-controls">
+    <button class="win-btn" id="min" title="Réduire" aria-label="Réduire">
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg>
+    </button>
+    <button class="win-btn close" id="close" title="Fermer" aria-label="Fermer">
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1"/></svg>
+    </button>
+  </div>
+</header>
+
+<section class="stage">
+  <button class="record-btn" id="record">
+    <span class="dot"></span>
+    <span id="record-label">COMMENCER L'ENREGISTREMENT</span>
+  </button>
+  <div class="meta">
+    <span class="hotkey-badge" id="hotkey">F9</span>
+    <span id="hotkey-note">fonctionne en arrière-plan</span>
+  </div>
+  <div class="timer" id="timer">00:00:00</div>
+  <div class="status" id="status">Prêt à enregistrer</div>
+</section>
+
+<div class="progress-wrap">
+  <div class="progress-step" id="progress-step">Traitement…</div>
+  <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+</div>
+
+<div class="result" id="result">
+  <span style="color:var(--ok)">✓</span>
+  <span class="path" id="result-path"></span>
+  <button class="btn-sub" style="width:auto;padding:4px 10px" id="open-folder">Ouvrir</button>
+</div>
+
+<main class="panels">
+
+  <section class="panel">
+    <h2>Vidéo</h2>
+    <div class="field">
+      <label for="resolution">Résolution</label>
+      <select id="resolution">
+        <option value="854x480">854×480 (SD)</option>
+        <option value="1280x720">1280×720 (HD)</option>
+        <option value="1920x1080">1920×1080 (Full HD)</option>
+        <option value="2560x1440">2560×1440 (2K)</option>
+        <option value="3840x2160">3840×2160 (4K)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="bitrate">Débit</label>
+      <select id="bitrate">
+        <option value="2500k">2500k — léger</option>
+        <option value="5000k">5000k — équilibré</option>
+        <option value="8000k">8000k — élevé</option>
+        <option value="15000k">15000k — maximal</option>
+      </select>
+    </div>
+
+    <label class="check" id="wrap-smart-focus">
+      <input type="checkbox" id="smart-focus">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Smart Focus</span>
+        <span class="check-hint">N'enregistre que la fenêtre active.
+          Lumina s'efface 2 s : cliquez sur la fenêtre à filmer.</span>
+      </span>
+    </label>
+
+    <div class="field">
+      <label>Dossier de sortie</label>
+      <button class="btn-sub" id="folder" title="">—</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Audio</h2>
+
+    <label class="check">
+      <input type="checkbox" id="mic">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text"><span class="check-label">Microphone</span></span>
+    </label>
+
+    <select id="device" aria-label="Microphone"></select>
+
+    <label class="check" id="wrap-system-audio">
+      <input type="checkbox" id="system-audio">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Son système</span>
+        <span class="check-hint">Ce que jouent les haut-parleurs</span>
+      </span>
+    </label>
+
+    <div class="field">
+      <label for="gain">Volume d'entrée · <span id="gain-value">0.5</span>×</label>
+      <input type="range" id="gain" min="0.1" max="2" step="0.1" value="0.5">
+      <div class="range-row"><span>0.1</span><span>1.0</span><span>2.0</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Intelligence artificielle</h2>
+
+    <label class="check" id="wrap-privacy_blur">
+      <input type="checkbox" id="privacy_blur">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Flou de confidentialité</span>
+        <span class="check-hint" id="hint-privacy_blur">Masque le texte sensible</span>
+      </span>
+    </label>
+
+    <label class="check">
+      <input type="checkbox" id="clean_canvas">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Masquer les notifications</span>
+      </span>
+    </label>
+
+    <label class="check">
+      <input type="checkbox" id="overlay">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Afficher les métriques</span>
+      </span>
+    </label>
+
+    <label class="check" id="wrap-subtitles">
+      <input type="checkbox" id="subtitles">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Sous-titres automatiques</span>
+        <span class="check-hint" id="hint-subtitles">Transcription de la piste audio</span>
+      </span>
+    </label>
+
+    <label class="check">
+      <input type="checkbox" id="magic_cut">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Couper les silences jusqu'à</span>
+      </span>
+    </label>
+
+    <div class="indent field">
+      <select id="magic_cut_max">
+        <option>1 s</option><option>2 s</option><option>3 s</option>
+        <option>5 s</option><option>10 s</option><option>30 s</option>
+        <option>Tous</option>
+      </select>
+      <span class="check-hint">« Tous » coupe aussi les longues pauses,
+        par exemple le temps de lancer une vidéo.</span>
+    </div>
+
+    <label class="check indent">
+      <input type="checkbox" id="delete_original">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Supprimer l'original après découpe</span>
+      </span>
+    </label>
+
+    <label class="check">
+      <input type="checkbox" id="thumbnails">
+      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
+      <span class="check-text">
+        <span class="check-label">Miniatures</span>
+        <span class="check-hint">3 propositions à partir des meilleures images</span>
+      </span>
+    </label>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
