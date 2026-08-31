@@ -85,10 +85,22 @@ def run() -> int:
         js_api=bridge,
         width=full_w,
         height=full_h,
-        min_size=(840, 540),
+        # Doit rester sous la taille du widget d'enregistrement : min_size
+        # est un plancher absolu que pywebview applique aussi à resize(),
+        # et un plancher trop haut donnait un widget de 840×540 qui
+        # masquait l'écran filmé. La taille confortable de la fenêtre est
+        # garantie par `width`/`height`, pas par ce plancher.
+        min_size=LuminaBridge.COMPACT_SIZE,
         background_color='#131417',
-        frameless=True,
-        easy_drag=False,      # le glissement vient de la barre de titre CSS
+        # Bordure native conservée : elle apporte le déplacement, le
+        # redimensionnement, l'ancrage Windows et l'agrandissement au
+        # double-clic. Une fenêtre sans bordure n'offre rien de tout cela,
+        # car « -webkit-app-region: drag » est une propriété Electron que
+        # WebView2 ignore. Le widget d'enregistrement retire la bordure
+        # le temps de la capture (voir LuminaBridge._set_native_frame).
+        frameless=False,
+        resizable=True,
+        easy_drag=True,       # déplace le widget, qui lui est sans bordure
     )
     bridge.window = window
 

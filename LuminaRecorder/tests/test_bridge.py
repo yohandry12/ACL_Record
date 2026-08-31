@@ -402,3 +402,63 @@ def test_taille_nulle_si_le_fichier_n_existe_pas_encore(bridge):
     bridge.recorder._raw_video_path = "chemin/inexistant.avi"
 
     assert bridge._recorded_bytes() == 0
+
+
+# --- géométrie de la fenêtre ---
+
+class FakeWindowGeometry(FakeWindow):
+    """Fenêtre déplaçable, pour vérifier la restauration de position."""
+
+    def __init__(self, x=120, y=60, width=900, height=600):
+        super().__init__()
+        self.x, self.y = x, y
+        self.width, self.height = width, height
+
+    def resize(self, width, height):
+        self.size = (width, height)
+        self.width, self.height = width, height
+
+    def move(self, x, y):
+        self.position = (x, y)
+        self.x, self.y = x, y
+
+
+def test_la_fenetre_retrouve_sa_place_apres_enregistrement(bridge,
+                                                           monkeypatch):
+    """L'utilisateur avait déplacé sa fenêtre : la lui rendre collée au
+    coin où se tenait le widget est un défaut visible à chaque capture."""
+    bridge.window = FakeWindowGeometry(x=120, y=60, width=900, height=600)
+    monkeypatch.setattr(bridge, '_set_native_frame', lambda visible: True)
+    demarrer_sans_attendre(bridge, monkeypatch)
+
+    assert bridge.window.size == LuminaBridge.COMPACT_SIZE
+
+    bridge.stop_recording()
+    assert attendre(lambda: bridge.state == IDLE)
+
+    assert (bridge.window.x, bridge.window.y) == (120, 60)
+    assert (bridge.window.width, bridge.window.height) == (900, 600)
+
+
+def test_la_bordure_revient_apres_enregistrement(bridge, monkeypatch):
+    """Sans bordure, l'utilisateur ne peut plus ni déplacer ni
+    redimensionner sa fenêtre."""
+    bordures = []
+    bridge.window = FakeWindowGeometry()
+    monkeypatch.setattr(bridge, '_set_native_frame',
+                        lambda visible: bordures.append(visible) or True)
+    demarrer_sans_attendre(bridge, monkeypatch)
+    bridge.stop_recording()
+    attendre(lambda: bridge.state == IDLE)
+
+    assert bordures == [False, True]
+
+
+def test_une_position_jamais_lue_ne_casse_pas_le_retour(bridge, monkeypatch):
+    """Fenêtre pas encore affichée : pas de position à restaurer, mais
+    l'enregistrement doit fonctionner quand même."""
+    monkeypatch.setattr(bridge, '_set_native_frame', lambda visible: True)
+    demarrer_sans_attendre(bridge, monkeypatch)
+    bridge.stop_recording()
+
+    assert attendre(lambda: bridge.state == IDLE)

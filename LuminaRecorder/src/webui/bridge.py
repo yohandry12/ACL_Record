@@ -119,6 +119,7 @@ class LuminaBridge:
         self._last_output = ""
         self._compact = False
         self._full_position = None
+        self._full_geometry = None
 
         self._purge_temp_files()
 
@@ -165,14 +166,25 @@ class LuminaBridge:
         compact_states = (PENDING, RECORDING)
         try:
             if state in compact_states and not self._compact:
+                # Mémoriser où l'utilisateur avait placé sa fenêtre AVANT
+                # de la déplacer : sans cela, on la lui rendait collée au
+                # coin où se tenait le widget.
+                self._full_position = self._current_position()
+                self._full_geometry = self._current_size()
                 self._compact = True
                 self.window.on_top = True
+                # Le widget se passe de bordure : petit, arrondi, déplacé
+                # par easy_drag
+                self._set_native_frame(False)
                 self.window.resize(*self.COMPACT_SIZE)
                 self.window.move(*self._compact_position())
             elif state not in compact_states and self._compact:
                 self._compact = False
                 self.window.on_top = False
-                self.window.resize(*self.full_size())
+                # Rendre la bordure : sans elle l'utilisateur ne peut ni
+                # déplacer ni redimensionner sa fenêtre
+                self._set_native_frame(True)
+                self.window.resize(*(self._full_geometry or self.full_size()))
                 if self._full_position:
                     self.window.move(*self._full_position)
         except Exception as e:
@@ -180,6 +192,72 @@ class LuminaBridge:
             # enregistrement : l'interface est secondaire par rapport à
             # la capture en cours
             print(f"[Lumina] Bascule de fenêtre impossible : {e}")
+
+    def _set_native_frame(self, visible: bool):
+        """Affiche ou masque la bordure native de la fenêtre.
+
+        La fenêtre principale garde sa bordure Windows : elle apporte
+        gratuitement le déplacement, le redimensionnement, l'ancrage et
+        l'agrandissement au double-clic. Sans elle, il ne reste rien pour
+        manipuler la fenêtre — `-webkit-app-region: drag` est une
+        propriété Electron, que WebView2 ignore.
+
+        Le widget d'enregistrement, lui, s'en passe : il est petit,
+        arrondi, et `easy_drag` suffit à le déplacer.
+
+        Passe par l'objet WinForms interne à pywebview : sans équivalent
+        dans l'API publique. Un échec est sans conséquence — on garde la
+        bordure telle quelle plutôt que d'interrompre l'enregistrement.
+        """
+        try:
+            import clr  # noqa: F401
+            from System.Windows.Forms import FormBorderStyle
+
+            form = self.window.native
+            # getattr : « None » est un mot-clé Python, l'attribut ne
+            # peut pas être écrit FormBorderStyle.None
+            style = (FormBorderStyle.Sizable if visible
+                     else getattr(FormBorderStyle, 'None'))
+            # L'interface graphique n'appartient pas à ce thread : passer
+            # par Invoke, sinon WinForms lève une exception de thread
+            if form.InvokeRequired:
+                from System import Action
+                form.Invoke(Action(lambda: setattr(form, 'FormBorderStyle',
+                                                   style)))
+            else:
+                form.FormBorderStyle = style
+            return True
+        except Exception as e:
+            print(f"[Lumina] Bordure de fenêtre inchangée : {e}")
+            return False
+
+    def _current_position(self):
+        """Position actuelle de la fenêtre, ou None si illisible.
+
+        L'utilisateur a pu déplacer sa fenêtre : c'est cette position
+        qu'il doit retrouver après l'enregistrement, pas celle d'origine.
+        """
+        try:
+            x, y = int(self.window.x), int(self.window.y)
+            # Une fenêtre pas encore affichée renvoie parfois 0,0 :
+            # inutile de mémoriser une position qui n'a jamais existé
+            return (x, y) if (x, y) != (0, 0) else None
+        except Exception:
+            return None
+
+    def _current_size(self):
+        """Taille actuelle de la fenêtre, ou None si illisible.
+
+        L'utilisateur a pu la redimensionner ; on la lui rend telle
+        quelle plutôt qu'à la taille calculée au démarrage.
+        """
+        try:
+            width, height = int(self.window.width), int(self.window.height)
+            if width < 200 or height < 200:
+                return None     # valeur aberrante ou fenêtre non prête
+            return (width, height)
+        except Exception:
+            return None
 
     def _compact_position(self):
         """Coin haut droit de l'écran, avec une marge."""

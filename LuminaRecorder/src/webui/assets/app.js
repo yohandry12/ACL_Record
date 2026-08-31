@@ -352,8 +352,6 @@ function wire() {
   });
 
   $('widget-stop').addEventListener('click', () => call('toggle_recording'));
-  $('min').addEventListener('click', () => call('minimize'));
-  $('close').addEventListener('click', () => call('close'));
   $('open-folder').addEventListener('click', () => call('open_output_folder'));
 
   el.folder.addEventListener('click', async () => {
