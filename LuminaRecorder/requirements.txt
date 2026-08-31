@@ -11,6 +11,10 @@ numpy>=1.24.0
 # Audio
 pyaudio>=0.2.13
 
+# Capture du son système (loopback WASAPI, Windows uniquement)
+# Sans ce paquet, la case "Son système" est grisée dans l'interface
+PyAudioWPatch>=0.2.12; sys_platform == 'win32'
+
 # Analyse système
 psutil>=5.9.0
 
