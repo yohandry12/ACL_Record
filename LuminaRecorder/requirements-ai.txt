@@ -1,0 +1,19 @@
+# Lumina Recorder - Fonctionnalités IA optionnelles
+# Installation: pip install -r requirements-ai.txt
+#
+# Séparé de requirements.txt à dessein : ces paquets tirent PyTorch et
+# pèsent près de 2 Go une fois installés. Lumina fonctionne sans eux —
+# les cases correspondantes sont grisées dans l'interface, avec le nom
+# du paquet à installer. Rien n'est jamais simulé en leur absence.
+#
+# Les modèles eux-mêmes sont téléchargés au premier usage (une centaine
+# de Mo chacun), pas à l'installation : prévoir une connexion la
+# première fois qu'on coche la case.
+
+# Sous-titres automatiques (transcription de la piste audio)
+# Alternative acceptée par le code : openai-whisper (plus lent)
+faster-whisper>=1.0.0
+
+# Flou de confidentialité (détection du texte sensible à l'écran)
+# Alternative acceptée par le code : pytesseract + binaire Tesseract
+easyocr>=1.7.0

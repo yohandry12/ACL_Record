@@ -25,8 +25,10 @@ pywin32>=306; sys_platform == 'win32'
 # Comparaison de versions pour les mises à jour
 packaging>=23.0
 
-# Interface moderne (optionnel mais recommandé)
-# customtkinter>=5.2.0
+# Fonctionnalités IA lourdes (sous-titres, flou de confidentialité) :
+# voir requirements-ai.txt. Volontairement hors de ce fichier, elles
+# tirent PyTorch et pèsent près de 2 Go — l'application fonctionne sans,
+# les cases concernées sont simplement grisées dans l'interface.
 
 # Outils de build (pour développement)
 # pyinstaller>=6.0.0
