@@ -43,23 +43,37 @@ REM Compilation avec PyInstaller
 echo [COMPILATION] Création de l'exécutable avec PyInstaller...
 pip install pyinstaller --quiet
 
+REM L'icone est optionnelle : si assets\icons\lumina.ico n'existe pas,
+REM PyInstaller echouerait sur --icon. On adapte la commande.
+set ICON_OPT=
+if exist "assets\icons\lumina.ico" set ICON_OPT=--icon=assets\icons\lumina.ico
+
+REM src\ est embarque comme donnee : main.py l'ajoute au sys.path via
+REM sys._MEIPASS quand l'application est empaquetee.
 pyinstaller ^
     --name "LuminaRecorder" ^
     --windowed ^
     --onefile ^
-    --icon="assets\icons\lumina.ico" ^
+    --noconfirm ^
+    %ICON_OPT% ^
     --add-data "config;config" ^
     --add-data "assets;assets" ^
-    --hidden-import=src ^
-    --hidden-import=src.core ^
-    --hidden-import=src.ui ^
-    --hidden-import=src.utils ^
+    --add-data "src;src" ^
+    --paths "src" ^
     --hidden-import=psutil ^
     --hidden-import=mss ^
     --hidden-import=cv2 ^
     --hidden-import=pyaudio ^
     --hidden-import=numpy ^
     --hidden-import=packaging ^
+    --hidden-import=pyaudiowpatch ^
+    --collect-submodules=core ^
+    --collect-submodules=ui ^
+    --collect-submodules=utils ^
+    --collect-submodules=filters ^
+    --collect-submodules=postprocess ^
+    --collect-submodules=services ^
+    --collect-submodules=ai ^
     main.py
 
 if errorlevel 1 (

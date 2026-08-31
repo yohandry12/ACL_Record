@@ -166,3 +166,27 @@ def test_thumbnails_processor_runs_last_after_magic_cut():
     from postprocess.thumbnail_processor import ThumbnailProcessor as TP
     assert isinstance(procs[-1], TP)
     assert isinstance(procs[-2], MagicCutProcessor)
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="FFmpeg absent")
+def test_courte_video_produit_moins_de_miniatures_sans_doublon(tmp_path):
+    """Mieux vaut 1 vraie miniature que 3 copies présentées comme des
+    propositions différentes."""
+    import cv2
+    import numpy as np
+
+    video = tmp_path / "court.mp4"
+    subprocess.run([shutil.which("ffmpeg"), "-y", "-f", "lavfi", "-i",
+                    "testsrc=size=160x120:rate=10:duration=0.3",
+                    str(video)], check=True, capture_output=True)
+
+    proc = ThumbnailProcessor(count=3)
+    result = proc.run(str(video), None, lambda p: None)
+
+    produites = sorted(tmp_path.glob("court_thumb*.png"))
+    if result.success and produites:
+        images = [cv2.imread(str(p)) for p in produites]
+        for i, a in enumerate(images):
+            for b in images[i + 1:]:
+                assert not np.array_equal(a, b), \
+                    "deux miniatures identiques livrées comme propositions"

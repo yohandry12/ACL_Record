@@ -6,8 +6,14 @@ Point d'entrée principal de l'application.
 import sys
 from pathlib import Path
 
-# Ajout du dossier src au path pour les imports
-src_path = Path(__file__).parent / 'src'
+# Ajout du dossier src au path pour les imports.
+# Empaquetée avec PyInstaller, l'application est dépliée dans un dossier
+# temporaire exposé par sys._MEIPASS : le chemin du fichier source
+# n'existe alors plus.
+if getattr(sys, 'frozen', False):
+    src_path = Path(getattr(sys, '_MEIPASS', Path(sys.executable).parent)) / 'src'
+else:
+    src_path = Path(__file__).parent / 'src'
 sys.path.insert(0, str(src_path))
 
 from ui.main_window import MainWindow

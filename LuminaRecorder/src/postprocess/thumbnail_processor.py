@@ -180,10 +180,9 @@ class ThumbnailProcessor(PostProcessor):
             by_pos = {s[0]: s[3] for s in scored}
             chosen_frames = [by_pos[p] for p in chosen_positions
                             if p in by_pos]
-            # Complète si besoin (vidéo très courte) en répétant la
-            # meilleure frame disponible
-            while len(chosen_frames) < self.count and chosen_frames:
-                chosen_frames.append(chosen_frames[-1])
+            # Vidéo trop courte pour `count` frames distinctes : on en
+            # produit moins plutôt que de livrer des copies identiques
+            # présentées comme des propositions différentes
             if not chosen_frames:
                 return PostProcessResult(
                     name=self.name, success=False,

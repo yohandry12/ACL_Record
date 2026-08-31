@@ -46,3 +46,8 @@ __pycache__/
 ```
 # Fichiers temporaires d'enregistrement Lumina
 temp/
+
+# Artefacts PyInstaller
+LuminaRecorder/dist/
+LuminaRecorder/build/
+LuminaRecorder/*.spec
