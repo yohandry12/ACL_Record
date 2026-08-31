@@ -1,6 +1,6 @@
 from utils.config_manager import ConfigManager
-from ui import main_window
-from ui.main_window import AIOptions
+from core import ai_options
+from core.ai_options import AIOptions
 from filters.privacy_blur_filter import PrivacyBlurFilter
 from filters.clean_canvas_filter import CleanCanvasFilter
 from postprocess.subtitles_processor import SubtitlesProcessor
@@ -44,7 +44,7 @@ def test_privacy_blur_filter_added_only_when_ocr_available(monkeypatch):
             'overlay': False, 'subtitles': False, 'magic_cut': False,
             'thumbnails': False}
 
-    monkeypatch.setattr(main_window, 'ocr_is_available', lambda: True)
+    monkeypatch.setattr(ai_options, 'ocr_is_available', lambda: True)
     filters = AIOptions.build_filters(opts)
     assert len(filters) == 1
     assert isinstance(filters[0], PrivacyBlurFilter)
@@ -57,7 +57,7 @@ def test_privacy_blur_filter_skipped_without_ocr(monkeypatch):
             'overlay': False, 'subtitles': False, 'magic_cut': False,
             'thumbnails': False}
 
-    monkeypatch.setattr(main_window, 'ocr_is_available', lambda: False)
+    monkeypatch.setattr(ai_options, 'ocr_is_available', lambda: False)
     assert AIOptions.build_filters(opts) == []
 
 
