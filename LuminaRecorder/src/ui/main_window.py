@@ -79,13 +79,15 @@ class AIOptions:
 
     @staticmethod
     def build_postprocessors(options: dict,
-                             max_silence: str = "3 s") -> list:
+                             max_silence: str = "3 s",
+                             delete_original: bool = False) -> list:
         procs = []
         if options.get('subtitles'):
             procs.append(SubtitlesProcessor())   # sous-titres AVANT Magic Cut
         if options.get('magic_cut'):
             procs.append(MagicCutProcessor(
-                max_silence_duration=AIOptions.parse_max_silence(max_silence)))
+                max_silence_duration=AIOptions.parse_max_silence(max_silence),
+                delete_original=delete_original))
         return procs
 
 
@@ -384,9 +386,25 @@ class MainWindow:
                          bg=self.colors['bg_secondary'],
                          fg=self.colors['text_secondary'],
                          justify=tk.LEFT).pack(anchor='w', padx=(24, 5),
-                                               pady=(0, 4))
+                                               pady=(0, 2))
                 seuil.bind("<<ComboboxSelected>>",
                            self._on_magic_cut_max_changed)
+
+                # Par défaut Lumina garde les deux fichiers (original +
+                # version coupée) : la découpe est irréversible
+                self.delete_original_var = tk.BooleanVar(
+                    value=self.config.get_bool('recording',
+                                               'delete_original',
+                                               fallback=False))
+                tk.Checkbutton(ai_card,
+                               text="Supprimer l'original après découpe",
+                               variable=self.delete_original_var,
+                               bg=self.colors['bg_secondary'],
+                               fg=self.colors['text_primary'],
+                               font=("Segoe UI", 8),
+                               anchor='w',
+                               command=self._on_delete_original_changed
+                               ).pack(fill=tk.X, padx=(24, 5), pady=(0, 4))
 
         # === FOOTER ===
         footer_frame = tk.Frame(self.root, bg=self.colors['bg_secondary'], height=60)
@@ -456,6 +474,11 @@ Vous pouvez les modifier manuellement si nécessaire.
         """Persiste le seuil de coupure des silences"""
         self.config.set('recording', 'magic_cut_max',
                         self.magic_cut_max_var.get())
+
+    def _on_delete_original_changed(self):
+        """Persiste le choix de supprimer l'enregistrement complet"""
+        self.config.set('recording', 'delete_original',
+                        self.delete_original_var.get())
 
     def _on_system_audio_toggled(self):
         """Persiste l'activation du son système"""
@@ -586,7 +609,8 @@ Vous pouvez les modifier manuellement si nécessaire.
                                             fg=self.colors['success'])
                     options = {k: v.get() for k, v in self.ai_vars.items()}
                     processors = AIOptions.build_postprocessors(
-                        options, self.magic_cut_max_var.get())
+                        options, self.magic_cut_max_var.get(),
+                        self.delete_original_var.get())
                     if processors:
                         self._run_postprocessing(final_path, processors, preserved_audio)
                     else:
@@ -661,7 +685,13 @@ Vous pouvez les modifier manuellement si nécessaire.
             progress_win.destroy()
         except tk.TclError:
             pass
-        lines = [f"✓ Vidéo sauvegardée :\n{video_path}\n"]
+        # L'original peut avoir été supprimé après découpe : ne pas
+        # annoncer un fichier qui n'existe plus
+        if os.path.exists(video_path):
+            lines = [f"✓ Vidéo sauvegardée :\n{video_path}\n"]
+        else:
+            lines = ["✓ Enregistrement traité "
+                     "(original supprimé après découpe)\n"]
         for r in results:
             if r.success and r.output_path:
                 lines.append(f"✓ {r.name} : {os.path.basename(r.output_path)}")

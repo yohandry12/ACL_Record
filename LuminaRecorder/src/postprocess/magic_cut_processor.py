@@ -87,10 +87,35 @@ class MagicCutProcessor(PostProcessor):
 
     def __init__(self, silence_threshold: float = 0.02,
                  min_silence_duration: float = 0.5,
-                 max_silence_duration: float = 3.0):
+                 max_silence_duration: float = 3.0,
+                 delete_original: bool = False):
         self.silence_threshold = silence_threshold
         self.min_silence_duration = min_silence_duration
         self.max_silence_duration = max_silence_duration
+        # Désactivé par défaut : la découpe est irréversible, l'original
+        # est la seule sauvegarde si Magic Cut coupe un passage voulu
+        self.delete_original = delete_original
+
+    def _cleanup_original(self, video_path: str,
+                          result: PostProcessResult) -> None:
+        """Supprime l'enregistrement complet si l'utilisateur l'a demandé.
+
+        Uniquement quand la découpe a réellement produit un fichier non
+        vide : un statut de succès ne suffit pas à justifier la
+        destruction de l'original.
+        """
+        if not self.delete_original or not result.success:
+            return
+        if not result.output_path or not os.path.exists(result.output_path):
+            return
+        if os.path.getsize(result.output_path) == 0:
+            return
+
+        try:
+            os.remove(video_path)
+            print(f"[Lumina] Original supprimé: {video_path}")
+        except OSError as e:
+            print(f"[Lumina] Impossible de supprimer l'original: {e}")
 
     def run(self, video_path: str, audio_path: Optional[str],
             progress_cb: Callable[[float], None]) -> PostProcessResult:
@@ -165,5 +190,7 @@ class MagicCutProcessor(PostProcessor):
                     error=f"FFmpeg a échoué: {proc.stderr[-300:]}")
 
         progress_cb(1.0)
-        return PostProcessResult(name=self.name, success=True,
-                                 output_path=output_path)
+        result = PostProcessResult(name=self.name, success=True,
+                                   output_path=output_path)
+        self._cleanup_original(video_path, result)
+        return result
