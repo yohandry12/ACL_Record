@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.system_analyzer import SystemAnalyzer, SystemProfile
 from core.recorder_core import RecorderCore, list_input_devices, get_temp_dir
 from core.system_audio import system_audio_is_available
+from core.focus_tracker import smart_focus_is_available
 from core.encoder import VideoEncoder
 from ui.components import StyledButton, ConfigCard, StatusBadge, ResolutionSelector, VolumeSlider
 from utils.config_manager import ConfigManager
@@ -123,6 +124,11 @@ class MainWindow:
         self.recorder = None
         self.current_video_path = None
         self.current_audio_path = None
+        # Smart Focus : True pendant les 2 s où l'utilisateur choisit sa
+        # fenêtre, fenêtre durant laquelle l'enregistrement n'a pas encore
+        # démarré mais un clic ne doit pas en lancer un second
+        self._focus_pending = False
+        self._closing = False
         
         # Construction de l'interface
         self._build_ui()
@@ -242,7 +248,39 @@ class MainWindow:
                             bg=self.colors['bg_secondary'],
                             fg=self.colors['text_secondary'])
         fps_label.pack(pady=5)
-        
+
+        # Smart Focus : n'enregistre que la fenêtre active au lieu de
+        # tout l'écran. Placé ici car c'est un choix de cadrage, au même
+        # titre que la résolution.
+        self.smart_focus_var = tk.BooleanVar(
+            value=self.config.get_bool('recording', 'smart_focus',
+                                       fallback=False))
+        focus_check = tk.Checkbutton(video_card,
+                                     text="🎯 Smart Focus (fenêtre active)",
+                                     variable=self.smart_focus_var,
+                                     bg=self.colors['bg_secondary'],
+                                     fg=self.colors['text_primary'],
+                                     selectcolor=self.colors['bg_primary'],
+                                     activebackground=self.colors['bg_secondary'],
+                                     activeforeground=self.colors['text_primary'],
+                                     anchor='w',
+                                     font=("Segoe UI", 9, "bold"),
+                                     command=self._on_smart_focus_toggled)
+        if not smart_focus_is_available():
+            self.smart_focus_var.set(False)
+            focus_check.config(state=tk.DISABLED,
+                               text="🎯 Smart Focus (installer pywin32)")
+        focus_check.pack(fill=tk.X, padx=10, pady=(6, 0))
+
+        focus_info = tk.Label(video_card,
+                              text="Lumina se réduit 2 s : cliquez\n"
+                                   "sur la fenêtre à enregistrer",
+                              font=("Segoe UI", 8),
+                              bg=self.colors['bg_secondary'],
+                              fg=self.colors['text_secondary'],
+                              justify=tk.LEFT)
+        focus_info.pack(fill=tk.X, padx=10, pady=(0, 6))
+
         # Carte 2: Poids & Fichier
         weight_card = ConfigCard(config_container, text="⚖️ Poids & Fichier")
         weight_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
@@ -490,6 +528,16 @@ Vous pouvez les modifier manuellement si nécessaire.
         self.config.set('recording', 'system_audio',
                         self.system_audio_var.get())
 
+    def _on_smart_focus_toggled(self):
+        """Persiste l'activation du Smart Focus"""
+        self.config.set('recording', 'smart_focus',
+                        self.smart_focus_var.get())
+
+    def _on_smart_focus(self, message: str):
+        """Appelé par le moteur : quelle fenêtre est suivie, ou l'échec."""
+        self.root.after(0, lambda: self.status_label.config(
+            text=message, fg=self.colors['text_secondary']))
+
     def _on_device_changed(self, event=None):
         """Persiste le micro choisi"""
         index = self._selected_device_index()
@@ -509,6 +557,13 @@ Vous pouvez les modifier manuellement si nécessaire.
 
     def _toggle_recording(self):
         """Démarre ou arrête l'enregistrement"""
+        # Pendant le délai de bascule du Smart Focus, is_recording est
+        # encore False : sans ce garde, un second clic lancerait un
+        # DEUXIÈME enregistreur en parallèle (deux threads de capture,
+        # deux flux audio sur le même micro) et le premier deviendrait
+        # injoignable, son .avi jamais finalisé.
+        if self._focus_pending:
+            return
         if not self.is_recording:
             self._start_recording()
         else:
@@ -550,12 +605,54 @@ Vous pouvez les modifier manuellement si nécessaire.
             on_filter_disabled=self._on_filter_disabled,
             on_capture_error=self._on_capture_error,
             on_audio_error=self._on_audio_error,
-            system_audio_enabled=self.system_audio_var.get()
+            system_audio_enabled=self.system_audio_var.get(),
+            smart_focus_enabled=self.smart_focus_var.get(),
+            on_smart_focus=self._on_smart_focus
         )
 
-        # Démarrage
-        success = self.recorder.start_recording(str(output_path))
-        
+        # Smart Focus : Lumina est au premier plan au moment du clic, elle
+        # se filmerait elle-même. On se réduit dans la barre des tâches et
+        # on laisse 2 s à l'utilisateur pour cliquer sur sa fenêtre cible,
+        # puis on verrouille dessus. Via `after` et non `sleep` : un sleep
+        # gèlerait tkinter, la fenêtre ne se réduirait même pas à l'écran.
+        if self.smart_focus_var.get() and smart_focus_is_available():
+            self.status_label.config(
+                text="🎯 Cliquez sur la fenêtre à enregistrer…",
+                fg=self.colors['warning'])
+            self._focus_pending = True
+            self.record_btn.config(state=tk.DISABLED)
+            self.root.iconify()
+            self.root.after(2000,
+                            lambda: self._launch_recorder(str(output_path)))
+            return
+
+        self._launch_recorder(str(output_path))
+
+    def _launch_recorder(self, output_path: str):
+        """Lance effectivement la capture et bascule l'interface.
+
+        Séparé de `_start_recording` car le Smart Focus insère un délai
+        entre la préparation et le démarrage réel.
+        """
+        self._focus_pending = False
+        # L'utilisateur a pu fermer Lumina pendant le délai de 2 s : ce
+        # callback différé toucherait alors des widgets détruits. On sort
+        # sans rien démarrer plutôt que de lever une TclError et de
+        # laisser un thread de capture orphelin derrière soi.
+        if self._closing or not self.root.winfo_exists():
+            return
+
+        self.record_btn.config(state=tk.NORMAL)
+        success = self.recorder.start_recording(output_path)
+
+        # La fenêtre cible est verrouillée : le tracker suit ce handle et
+        # plus le premier plan. Rendre Lumina visible ne détourne donc
+        # plus la capture, et l'utilisateur doit pouvoir cliquer sur
+        # "Arrêter" — laisser l'application réduite le priverait du seul
+        # moyen d'arrêter l'enregistrement.
+        if self.smart_focus_var.get() and success:
+            self.root.deiconify()
+
         if success:
             self.is_recording = True
             self.record_btn.config(text="■ ARRÊTER L'ENREGISTREMENT",
@@ -563,6 +660,12 @@ Vous pouvez les modifier manuellement si nécessaire.
             self.status_label.config(text="● Enregistrement en cours...",
                                     fg=self.colors['danger'])
             self._start_timer()
+        else:
+            # Restaurer l'interface réduite par le Smart Focus, sinon
+            # l'utilisateur se retrouve sans fenêtre et sans explication
+            self.root.deiconify()
+            self.status_label.config(text="⚠ Échec du démarrage",
+                                    fg=self.colors['danger'])
             
     def _stop_recording(self):
         """Logique d'arrêt d'enregistrement"""
@@ -746,8 +849,24 @@ Vous pouvez les modifier manuellement si nécessaire.
         if folder:
             self.save_path_var.set(folder)
             
+    def _on_close(self):
+        """Fermeture propre de l'application.
+
+        Arrête la capture en cours si besoin : sans cela, le thread de
+        capture survit à la fenêtre et laisse un .avi jamais finalisé
+        (VideoWriter.release() n'est appelé que par stop_recording).
+        """
+        self._closing = True
+        if self.recorder is not None and self.recorder.is_recording:
+            try:
+                self.recorder.stop_recording()
+            except Exception as e:
+                print(f"[Lumina] Arrêt de la capture à la fermeture : {e}")
+        self.root.destroy()
+
     def run(self):
         """Lance l'application"""
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.mainloop()
 
 

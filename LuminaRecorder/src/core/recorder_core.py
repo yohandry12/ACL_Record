@@ -19,6 +19,7 @@ from pathlib import Path
 
 from filters.base import FilterChain, FrameFilter
 from core.system_audio import SystemAudioCapture, system_audio_is_available
+from core.focus_tracker import FocusTracker, smart_focus_is_available
 
 
 @dataclass
@@ -107,7 +108,9 @@ class RecorderCore:
                  on_capture_error: Optional[Callable[[str], None]] = None,
                  audio_device_index: Optional[int] = None,
                  on_audio_error: Optional[Callable[[str], None]] = None,
-                 system_audio_enabled: bool = False):
+                 system_audio_enabled: bool = False,
+                 smart_focus_enabled: bool = False,
+                 on_smart_focus: Optional[Callable[[str], None]] = None):
         self.resolution = resolution
         self.fps = fps
         self.audio_enabled = audio_enabled
@@ -137,6 +140,8 @@ class RecorderCore:
 
         self.audio_frames = []
         self._writer = None            # cv2.VideoWriter, ouvert à la 1re frame
+        self._frame_size = None        # (w, h) figé à l'ouverture du writer
+        self._size_mismatch_logged = False
         self._raw_video_path = ""
         self._frame_count = 0
         self._temp_dir = str(get_temp_dir())
@@ -147,6 +152,14 @@ class RecorderCore:
         # Configuration MSS pour la capture d'écran
         self.sct = mss.mss()
         self.monitor = self._get_monitor_from_resolution(resolution)
+
+        # Smart Focus : suit la fenêtre active au lieu de l'écran entier.
+        # Le verrouillage a lieu au démarrage (voir start_recording), pas
+        # ici : la fenêtre au premier plan à la construction est celle de
+        # Lumina, pas celle que l'utilisateur veut filmer.
+        self.smart_focus_enabled = smart_focus_enabled
+        self.on_smart_focus = on_smart_focus
+        self._focus_tracker = None
 
         # Configuration Audio
         self.audio_format = pyaudio.paInt16
@@ -179,12 +192,19 @@ class RecorderCore:
         self._t0 = time.time()
         self.audio_frames = []
         self._writer = None
+        self._frame_size = None
+        self._size_mismatch_logged = False
         self._raw_video_path = ""
         self._frame_count = 0
         self.start_time = datetime.now()
 
         print(f"[Lumina] Démarrage de l'enregistrement : "
               f"{self.resolution} @ {self.fps} FPS")
+
+        # Smart Focus : verrouiller la fenêtre AVANT la première frame,
+        # sinon la première image serait plein écran et fixerait la
+        # résolution du fichier
+        self._lock_smart_focus()
 
         # L'audio démarre en premier : l'ouverture de PortAudio prend
         # ~1 s, pendant laquelle la vidéo tournerait sans son. On attend
@@ -268,12 +288,61 @@ class RecorderCore:
             self._raw_video_path = str(
                 Path(self._temp_dir) / f"lumina_raw_{timestamp}.avi")
             h, w = frame_bgr.shape[:2]
+            self._frame_size = (w, h)
             fourcc = cv2.VideoWriter_fourcc(*'MJPG')
             self._writer = cv2.VideoWriter(
                 self._raw_video_path, fourcc, self.fps, (w, h))
 
+        # cv2.VideoWriter ignore SILENCIEUSEMENT une frame dont la taille
+        # diffère de celle d'ouverture : la frame serait perdue sans le
+        # moindre message. On redimensionne plutôt que de perdre l'image.
+        # Cas légitime : l'utilisateur change la résolution de son écran
+        # en cours d'enregistrement. On le signale une fois — sans ce
+        # message, une régression du suivi de fenêtre ne se verrait qu'à
+        # une image légèrement étirée, jamais diagnostiquée.
+        h, w = frame_bgr.shape[:2]
+        if (w, h) != self._frame_size:
+            if not self._size_mismatch_logged:
+                self._size_mismatch_logged = True
+                print(f"[Lumina] Taille de capture changée "
+                      f"{self._frame_size} -> {(w, h)}, image redimensionnée")
+            frame_bgr = cv2.resize(frame_bgr, self._frame_size,
+                                   interpolation=cv2.INTER_AREA)
+
         self._writer.write(frame_bgr)
         self._frame_count += 1
+
+    def _lock_smart_focus(self):
+        """Verrouille le Smart Focus sur la fenêtre active, si demandé.
+
+        L'appelant (l'interface) doit s'être effacé avant : sans cela, la
+        fenêtre au premier plan serait Lumina elle-même. En cas d'échec,
+        on retombe silencieusement sur l'écran entier — le Smart Focus est
+        un confort, pas une condition d'enregistrement.
+        """
+        self._focus_tracker = None
+        if not self.smart_focus_enabled:
+            return
+
+        try:
+            tracker = FocusTracker(self.monitor)
+            if tracker.lock_on_foreground():
+                self._focus_tracker = tracker
+                msg = f"Smart Focus : suivi de « {tracker.window_title} »"
+            else:
+                msg = "Smart Focus : aucune fenêtre détectée, écran entier"
+        except Exception as e:
+            msg = f"Smart Focus indisponible ({e}), écran entier"
+
+        print(f"[Lumina] {msg}")
+        if self.on_smart_focus:
+            # Le callback touche l'interface : si elle vient d'être
+            # détruite, son échec ne doit pas faire capoter le démarrage
+            # de l'enregistrement
+            try:
+                self.on_smart_focus(msg)
+            except Exception:
+                pass
 
     def _capture_screen(self):
         """Boucle de capture d'écran — écriture disque en continu."""
@@ -283,7 +352,10 @@ class RecorderCore:
             start_frame_time = time.time()
 
             try:
-                screenshot = self.sct.grab(self.monitor)
+                # Smart Focus actif : la zone suit la fenêtre verrouillée
+                region = (self._focus_tracker.current_region()
+                          if self._focus_tracker else self.monitor)
+                screenshot = self.sct.grab(region)
                 img = np.array(screenshot)
                 img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 

@@ -18,6 +18,10 @@ PyAudioWPatch>=0.2.12; sys_platform == 'win32'
 # Analyse système
 psutil>=5.9.0
 
+# Détection de la fenêtre au premier plan (Windows uniquement)
+# Sans ce paquet, la case "Smart Focus" est grisée dans l'interface
+pywin32>=306; sys_platform == 'win32'
+
 # Comparaison de versions pour les mises à jour
 packaging>=23.0
 

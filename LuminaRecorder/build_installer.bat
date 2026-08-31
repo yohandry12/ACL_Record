@@ -67,6 +67,7 @@ pyinstaller ^
     --hidden-import=numpy ^
     --hidden-import=packaging ^
     --hidden-import=pyaudiowpatch ^
+    --hidden-import=win32gui ^
     --collect-submodules=core ^
     --collect-submodules=ui ^
     --collect-submodules=utils ^

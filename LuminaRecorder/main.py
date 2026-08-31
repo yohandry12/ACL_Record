@@ -16,6 +16,15 @@ else:
     src_path = Path(__file__).parent / 'src'
 sys.path.insert(0, str(src_path))
 
+from core.window_detect import enable_dpi_awareness
+
+# Doit précéder la création de la fenêtre Tk : Windows refuse tout
+# changement d'échelle une fois la première fenêtre créée. Sans cela, sur
+# un écran mis à l'échelle (150 %...), les coordonnées de fenêtre et les
+# pixels capturés ne sont pas dans le même repère et le Smart Focus filme
+# à côté.
+enable_dpi_awareness()
+
 from ui.main_window import MainWindow
 
 
