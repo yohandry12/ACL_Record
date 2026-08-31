@@ -12,11 +12,71 @@ import cv2
 import pyaudio
 import wave
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Tuple, Dict, List, Callable
 from pathlib import Path
 
 from filters.base import FilterChain, FrameFilter
+
+
+@dataclass
+class AudioDevice:
+    """Périphérique d'entrée audio proposé à l'utilisateur"""
+    index: int
+    name: str
+    max_channels: int
+    is_default: bool
+
+
+def _decode_device_name(raw: str) -> str:
+    """Répare les noms PyAudio mal décodés sous Windows.
+
+    PortAudio renvoie de l'UTF-8 interprété en latin-1 ("RÃ©seau" au lieu
+    de "Réseau"). Le re-encodage restaure les accents ; si la chaîne n'est
+    pas concernée, elle est renvoyée telle quelle.
+    """
+    try:
+        return raw.encode('latin-1').decode('utf-8')
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return raw
+
+
+def list_input_devices() -> List[AudioDevice]:
+    """Liste les micros disponibles.
+
+    Retourne une liste vide si le sous-système audio est indisponible :
+    l'absence de micro ne doit jamais empêcher l'application de démarrer.
+    """
+    devices: List[AudioDevice] = []
+    p = None
+    try:
+        p = pyaudio.PyAudio()
+        try:
+            default_index = p.get_default_input_device_info()['index']
+        except Exception:
+            default_index = None
+
+        for i in range(p.get_device_count()):
+            info = p.get_device_info_by_index(i)
+            if info.get('maxInputChannels', 0) > 0:
+                devices.append(AudioDevice(
+                    index=i,
+                    name=_decode_device_name(
+                        str(info.get('name', f'Périphérique {i}')).strip()),
+                    max_channels=int(info['maxInputChannels']),
+                    is_default=(i == default_index)
+                ))
+    except Exception as e:
+        print(f"[Lumina] Impossible de lister les micros: {e}")
+    finally:
+        if p is not None:
+            try:
+                p.terminate()
+            except Exception:
+                pass
+
+    return devices
 
 
 class RecorderCore:
@@ -29,11 +89,16 @@ class RecorderCore:
                  audio_enabled: bool = True, audio_gain: float = 0.5,
                  filters: Optional[List[FrameFilter]] = None,
                  on_filter_disabled: Optional[Callable[[str], None]] = None,
-                 on_capture_error: Optional[Callable[[str], None]] = None):
+                 on_capture_error: Optional[Callable[[str], None]] = None,
+                 audio_device_index: Optional[int] = None,
+                 on_audio_error: Optional[Callable[[str], None]] = None):
         self.resolution = resolution
         self.fps = fps
         self.audio_enabled = audio_enabled
         self.audio_gain = audio_gain
+        # None = micro par défaut du système
+        self.audio_device_index = audio_device_index
+        self.on_audio_error = on_audio_error
 
         self.filter_chain = FilterChain(
             filters or [],
@@ -182,6 +247,7 @@ class RecorderCore:
                             channels=self.channels,
                             rate=self.sample_rate,
                             input=True,
+                            input_device_index=self.audio_device_index,
                             frames_per_buffer=self.chunk_size)
             
             while self.is_recording:
@@ -198,7 +264,11 @@ class RecorderCore:
             stream.stop_stream()
             stream.close()
         except Exception as e:
+            # La vidéo continue sans son : on prévient l'utilisateur au
+            # lieu d'échouer en silence
             print(f"[Lumina] Erreur capture audio: {e}")
+            if self.on_audio_error:
+                self.on_audio_error(str(e))
         finally:
             p.terminate()
     

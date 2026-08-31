@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.system_analyzer import SystemAnalyzer, SystemProfile
-from core.recorder_core import RecorderCore
+from core.recorder_core import RecorderCore, list_input_devices
 from core.encoder import VideoEncoder
 from ui.components import StyledButton, ConfigCard, StatusBadge, ResolutionSelector, VolumeSlider
 from utils.config_manager import ConfigManager
@@ -228,13 +228,56 @@ class MainWindow:
         audio_card = ConfigCard(config_container, text="🔊 Audio (Volume Bas)")
         audio_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
         
+        # Activation du micro
+        self.mic_var = tk.BooleanVar(
+            value=self.config.get_bool('recording', 'audio_enabled',
+                                       fallback=True))
+        mic_check = tk.Checkbutton(audio_card, text="🎤 Microphone",
+                                   variable=self.mic_var,
+                                   bg=self.colors['bg_secondary'],
+                                   fg=self.colors['text_primary'],
+                                   anchor='w',
+                                   font=("Segoe UI", 9, "bold"),
+                                   command=self._on_mic_toggled)
+        mic_check.pack(fill=tk.X, padx=5, pady=(8, 2))
+
+        # Choix du périphérique d'entrée
+        self.audio_devices = list_input_devices()
+        device_labels = [self._device_label(d) for d in self.audio_devices]
+
+        self.device_var = tk.StringVar()
+        self.device_combo = ttk.Combobox(audio_card,
+                                         textvariable=self.device_var,
+                                         values=device_labels,
+                                         state="readonly",
+                                         font=("Segoe UI", 8))
+        self.device_combo.pack(fill=tk.X, padx=5, pady=(0, 6))
+
+        if device_labels:
+            saved = self.config.get_int('recording', 'audio_device_index',
+                                        fallback=-1)
+            chosen = next((i for i, d in enumerate(self.audio_devices)
+                           if d.index == saved), None)
+            if chosen is None:
+                chosen = next((i for i, d in enumerate(self.audio_devices)
+                               if d.is_default), 0)
+            self.device_combo.current(chosen)
+            self.device_combo.bind("<<ComboboxSelected>>",
+                                   self._on_device_changed)
+        else:
+            # Aucun micro : on le dit clairement au lieu d'un combo vide
+            self.device_var.set("Aucun microphone détecté")
+            self.device_combo.config(state=tk.DISABLED)
+            self.mic_var.set(False)
+            mic_check.config(state=tk.DISABLED)
+
         audio_info = tk.Label(audio_card,
-                             text="Glissez pour ajuster le volume\n(Défaut: 0.5x = volume réduit)",
+                             text="Volume de sortie (0.5x = réduit)",
                              font=("Segoe UI", 8),
                              bg=self.colors['bg_secondary'],
                              fg=self.colors['text_secondary'],
                              justify=tk.CENTER)
-        audio_info.pack(pady=(10,5))
+        audio_info.pack(pady=(4, 2))
         
         self.volume_slider = VolumeSlider(audio_card)
         self.volume_slider.pack(pady=10)
@@ -314,6 +357,38 @@ Vous pouvez les modifier manuellement si nécessaire.
         # Afficher dans une fenêtre modale après 500ms
         self.root.after(500, lambda: messagebox.showinfo("🚀 Lumina Prêt", welcome_msg))
         
+    @staticmethod
+    def _device_label(device) -> str:
+        """Nom affiché d'un micro dans le sélecteur"""
+        suffix = " (défaut)" if device.is_default else ""
+        name = device.name if len(device.name) <= 40 else device.name[:37] + "..."
+        return f"{name}{suffix}"
+
+    def _selected_device_index(self):
+        """Index PyAudio du micro choisi, None si aucun/désactivé"""
+        if not self.audio_devices:
+            return None
+        pos = self.device_combo.current()
+        if pos < 0 or pos >= len(self.audio_devices):
+            return None
+        return self.audio_devices[pos].index
+
+    def _on_mic_toggled(self):
+        """Persiste l'activation du micro"""
+        self.config.set('recording', 'audio_enabled', self.mic_var.get())
+
+    def _on_device_changed(self, event=None):
+        """Persiste le micro choisi"""
+        index = self._selected_device_index()
+        if index is not None:
+            self.config.set('recording', 'audio_device_index', index)
+
+    def _on_audio_error(self, error_msg: str):
+        """Appelé depuis le thread audio si le micro échoue."""
+        self.root.after(0, lambda: self.status_label.config(
+            text=f"⚠ Micro indisponible ({error_msg}) — vidéo sans son",
+            fg=self.colors['warning']))
+
     def _on_ai_option_changed(self):
         """Sauvegarde immédiate des Options IA dans le .ini"""
         self.ai_options = {k: v.get() for k, v in self.ai_vars.items()}
@@ -352,11 +427,13 @@ Vous pouvez les modifier manuellement si nécessaire.
         self.recorder = RecorderCore(
             resolution=resolution_str,
             fps=fps,
-            audio_enabled=True,
+            audio_enabled=self.mic_var.get(),
             audio_gain=audio_gain,
+            audio_device_index=self._selected_device_index(),
             filters=AIOptions.build_filters(options),
             on_filter_disabled=self._on_filter_disabled,
-            on_capture_error=self._on_capture_error
+            on_capture_error=self._on_capture_error,
+            on_audio_error=self._on_audio_error
         )
 
         # Démarrage
