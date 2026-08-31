@@ -626,26 +626,46 @@ class LuminaBridge:
         self._start_timer()
         return {'ok': True}
 
-    def _recorded_bytes(self) -> int:
-        """Taille du fichier brut en cours d'écriture.
+    def _recorded_bytes(self, seconds: float = None) -> int:
+        """Taille estimée du fichier FINAL, pas du fichier brut.
 
-        Le widget l'affiche pour que l'utilisateur voie la capture
-        progresser réellement, et repère un enregistrement qui grossit
-        trop vite avant de remplir son disque.
+        Le brut est un AVI quasi non compressé qui gonfle de plusieurs
+        Mo par seconde avant d'être jeté après encodage : l'afficher
+        faisait croire à l'utilisateur qu'une capture d'une seconde
+        pesait déjà 7 ou 20 Mo. Ce qu'il obtiendra réellement est le
+        MP4, dont la taille découle du débit d'encodage — c'est donc
+        elle qu'on estime : (débit vidéo + débit audio) × durée.
         """
-        path = getattr(self.recorder, '_raw_video_path', '') or ''
+        if seconds is None:
+            seconds = max(0.0, time.time() - (self._start_time or time.time()))
+        video_kbps = self._bitrate_kbps()
+        # 192k : le débit AAC de l'encodeur (voir encoder.py). Compté
+        # seulement si une piste audio existera dans le fichier final.
+        audio_kbps = 192 if (
+            self.config.get_bool('recording', 'audio_enabled', fallback=True)
+            or self.config.get_bool('recording', 'system_audio',
+                                    fallback=False)) else 0
+        return int(seconds * (video_kbps + audio_kbps) * 1000 / 8)
+
+    def _bitrate_kbps(self) -> float:
+        """Débit vidéo configuré, en kbit/s. « 2500k » -> 2500."""
+        raw = str(self._bitrate()).strip().lower()
         try:
-            return os.path.getsize(path) if path else 0
-        except OSError:
-            # Le fichier n'existe pas encore à la première seconde
-            return 0
+            if raw.endswith('m'):
+                return float(raw[:-1]) * 1000
+            if raw.endswith('k'):
+                return float(raw[:-1])
+            return float(raw)
+        except ValueError:
+            return 2500.0
 
     def _start_timer(self):
         def run():
             while self.state == RECORDING:
+                seconds = int(time.time() - self._start_time)
                 self.emit('tick', {
-                    'seconds': int(time.time() - self._start_time),
-                    'bytes': self._recorded_bytes(),
+                    'seconds': seconds,
+                    'bytes': self._recorded_bytes(seconds),
                 })
                 time.sleep(1.0)
         self._timer_thread = threading.Thread(target=run, daemon=True)

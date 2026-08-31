@@ -396,13 +396,26 @@ def test_le_tick_porte_duree_et_taille(bridge, monkeypatch):
     assert '"bytes"' in envoye
 
 
-def test_taille_nulle_si_le_fichier_n_existe_pas_encore(bridge):
-    """À la première seconde, le fichier brut n'est pas encore créé :
-    cela ne doit pas lever."""
-    bridge.recorder = FakeRecorder()
-    bridge.recorder._raw_video_path = "chemin/inexistant.avi"
-
+def test_taille_nulle_avant_le_demarrage(bridge):
+    """Sans horloge de départ, l'estimation vaut zéro : ne pas lever."""
     assert bridge._recorded_bytes() == 0
+
+
+def test_taille_estimee_sur_le_debit_pas_sur_le_fichier_brut(bridge):
+    """Le brut (AVI quasi non compressé) gonfle de plusieurs Mo par
+    seconde puis est jeté : l'afficher faisait croire qu'une seconde de
+    capture pesait déjà 20 Mo. On affiche ce que pèsera le MP4 final,
+    déduit du débit d'encodage."""
+    # 2500 kbit/s vidéo + 192 kbit/s audio = 2692 kbit/s -> 336,5 Ko/s
+    estime = bridge._recorded_bytes(seconds=60)
+
+    assert estime == int(60 * (2500 + 192) * 1000 / 8)
+    # Ordre de grandeur : ~19 Mo pour une minute, pas 200
+    assert 15_000_000 < estime < 25_000_000
+
+
+def test_debit_analyse_avec_suffixes(bridge):
+    assert bridge._bitrate_kbps() == 2500.0
 
 
 # --- géométrie de la fenêtre ---

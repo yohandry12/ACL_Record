@@ -143,7 +143,7 @@ window.luminaEvent = function (message) {
   } else if (event === 'tick') {
     el.timer.textContent = formatDuration(payload.seconds);
     updateWidgetTime(payload.seconds);
-    el.widgetSize.textContent = formatSize(payload.bytes);
+    el.widgetSize.textContent = '≈ ' + formatSize(payload.bytes);
   } else if (event === 'countdown') {
     showCountdown(payload);
   } else if (event === 'progress') {
