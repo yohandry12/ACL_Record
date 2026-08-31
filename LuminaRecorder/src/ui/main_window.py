@@ -26,6 +26,7 @@ from filters.overlay_filter import OverlayFilter
 from postprocess.subtitles_processor import (SubtitlesProcessor,
                                              whisper_is_available)
 from postprocess.magic_cut_processor import MagicCutProcessor
+from postprocess.thumbnail_processor import ThumbnailProcessor
 from postprocess.base import run_postprocessors
 
 
@@ -40,6 +41,7 @@ class AIOptions:
         'overlay': ('system', 'show_overlay'),
         'subtitles': ('ai', 'auto_subtitles'),
         'magic_cut': ('ai', 'magic_cut'),
+        'thumbnails': ('ai', 'thumbnails'),
     }
 
     @staticmethod
@@ -88,6 +90,8 @@ class AIOptions:
             procs.append(MagicCutProcessor(
                 max_silence_duration=AIOptions.parse_max_silence(max_silence),
                 delete_original=delete_original))
+        if options.get('thumbnails'):
+            procs.append(ThumbnailProcessor())   # dernier : agit sur la vidéo finale
         return procs
 
 
@@ -343,6 +347,7 @@ class MainWindow:
             ('overlay', "Overlay métriques"),
             ('subtitles', "Sous-titres auto"),
             ('magic_cut', "Couper les silences"),
+            ('thumbnails', "Miniatures (3 propositions)"),
         ]
         for key, label in labels:
             var = tk.BooleanVar(value=self.ai_options.get(key, False))
