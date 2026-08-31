@@ -385,6 +385,21 @@ def test_le_widget_apparait_des_le_decompte(bridge):
     assert bridge._window.size == LuminaBridge.COMPACT_SIZE
 
 
+def test_le_widget_est_exclu_de_la_capture(bridge, monkeypatch):
+    """L'utilisateur voit le widget sur son écran, mais il ne doit pas
+    s'incruster dans la vidéo. L'exclusion s'active en basculant sur le
+    widget et se lève en revenant à la fenêtre pleine — sinon un autre
+    outil de capture ne pourrait plus jamais filmer Lumina."""
+    appels = []
+    monkeypatch.setattr(bridge, '_set_capture_affinity', appels.append)
+
+    bridge.start_recording()        # bascule compacte dès le décompte
+    assert appels == [True]
+
+    bridge.stop_recording()         # annulation pendant le décompte
+    assert appels == [True, False]
+
+
 def test_le_tick_porte_duree_et_taille(bridge, monkeypatch):
     """Le widget affiche la taille du fichier : elle doit accompagner
     chaque battement, pas seulement la durée."""

@@ -198,11 +198,18 @@ class LuminaBridge:
                 # Le widget se passe de bordure : petit, arrondi, déplacé
                 # par easy_drag
                 self._set_native_frame(False)
+                # Visible pour l'utilisateur, absent de la vidéo : sans
+                # cela le widget s'incruste en haut à droite de chaque
+                # enregistrement
+                self._set_capture_affinity(True)
                 self._window.resize(*self.COMPACT_SIZE)
                 self._window.move(*self._compact_position())
             elif state not in compact_states and self._compact:
                 self._compact = False
                 self._window.on_top = False
+                # Redevenir capturable : l'utilisateur peut vouloir
+                # filmer Lumina elle-même avec un autre outil
+                self._set_capture_affinity(False)
                 # Rendre la bordure : sans elle l'utilisateur ne peut ni
                 # déplacer ni redimensionner sa fenêtre
                 self._set_native_frame(True)
@@ -214,6 +221,34 @@ class LuminaBridge:
             # enregistrement : l'interface est secondaire par rapport à
             # la capture en cours
             print(f"[Lumina] Bascule de fenêtre impossible : {e}")
+
+    # Valeurs de SetWindowDisplayAffinity (winuser.h)
+    _WDA_NONE = 0x0
+    _WDA_EXCLUDEFROMCAPTURE = 0x11
+
+    def _set_capture_affinity(self, exclude: bool):
+        """Rend la fenêtre invisible dans les captures d'écran, pas à
+        l'écran.
+
+        SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) : l'utilisateur
+        voit le widget sur son moniteur, mais la composition capturée
+        par BitBlt/mss se fait sans lui. Mesuré sur machine avant
+        d'implémenter : la capture montre le fond derrière la fenêtre,
+        pas un rectangle noir. C'est le mécanisme des contrôles de
+        Zoom/OBS.
+
+        Échec toléré (Windows antérieur à la 2004, fenêtre de test sans
+        handle natif) : le widget reste alors simplement visible dans la
+        vidéo, comme avant.
+        """
+        try:
+            import ctypes
+            hwnd = int(self._window.native.Handle.ToInt64())
+            affinity = (self._WDA_EXCLUDEFROMCAPTURE if exclude
+                        else self._WDA_NONE)
+            ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, affinity)
+        except Exception:
+            pass
 
     def _set_native_frame(self, visible: bool):
         """Affiche ou masque la bordure native de la fenêtre.
