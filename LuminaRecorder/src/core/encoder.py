@@ -48,10 +48,11 @@ class VideoEncoder:
     def encode(self, video_path: str, audio_path: Optional[str], 
                output_path: str, resolution: str, fps: int, 
                bitrate: str = "5000k", audio_gain: float = 0.5,
-               encoder_preset: str = "medium") -> bool:
+               encoder_preset: str = "medium",
+               system_audio_path: Optional[str] = None) -> bool:
         """
         Encode la vidéo finale avec FFmpeg.
-        
+
         Args:
             video_path: Chemin vers la vidéo brute
             audio_path: Chemin vers l'audio brut (optionnel)
@@ -61,7 +62,10 @@ class VideoEncoder:
             bitrate: Bitrate vidéo (ex: 5000k)
             audio_gain: Gain audio (0.1 à 2.0)
             encoder_preset: Vitesse de compression (ultrafast, fast, medium, slow, veryslow)
-            
+            system_audio_path: Son système capté en loopback (optionnel).
+                Mixé avec le micro par le filtre amix ; FFmpeg gère le
+                rééchantillonnage entre 44,1 kHz (micro) et 48 kHz (loopback).
+
         Returns:
             True si succès, False sinon
         """
@@ -79,8 +83,43 @@ class VideoEncoder:
             '-i', video_path,
         ]
         
-        # Ajout de l'audio si présent
-        if audio_path and os.path.exists(audio_path):
+        has_mic = bool(audio_path and os.path.exists(audio_path))
+        has_system = bool(system_audio_path
+                          and os.path.exists(system_audio_path))
+
+        # Micro + son système : mixage par FFmpeg
+        if has_mic and has_system:
+            cmd.extend([
+                '-i', audio_path,
+                '-i', system_audio_path,
+                '-c:v', self.codec,
+                '-preset', encoder_preset,
+                '-b:v', bitrate,
+                '-vf', f'scale={width}:{height}',
+                # duration=longest : ne pas tronquer si une source s'arrête
+                # avant l'autre (le loopback ne délivre rien dans le silence)
+                '-filter_complex',
+                f'[1:a]volume={audio_gain}[mic];'
+                f'[2:a]volume={audio_gain}[sys];'
+                f'[mic][sys]amix=inputs=2:duration=longest[aout]',
+                '-map', '0:v',
+                '-map', '[aout]',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+            ])
+        # Son système seul (micro coupé)
+        elif has_system:
+            cmd.extend([
+                '-i', system_audio_path,
+                '-c:v', self.codec,
+                '-preset', encoder_preset,
+                '-b:v', bitrate,
+                '-vf', f'scale={width}:{height}',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-filter:a', f'volume={audio_gain}',
+            ])
+        elif has_mic:
             cmd.extend([
                 '-i', audio_path,
                 '-c:v', self.codec,
@@ -118,7 +157,8 @@ class VideoEncoder:
                 print(f"[Lumina] Encodage terminé avec succès: {output_path}")
                 
                 # Nettoyage des fichiers temporaires
-                self._cleanup_temp_files(video_path, audio_path)
+                self._cleanup_temp_files(video_path, audio_path,
+                                         system_audio_path)
                 
                 return True
             else:

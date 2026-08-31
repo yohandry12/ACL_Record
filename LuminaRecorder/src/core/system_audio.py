@@ -1,0 +1,131 @@
+"""
+Lumina Recorder - Capture du son système (loopback WASAPI)
+
+Enregistre ce que jouent les haut-parleurs (vidéo, musique, notifications)
+en plus — ou à la place — du microphone. Utile pour les tutoriels où l'on
+veut à la fois sa voix et le son des applications.
+
+Nécessite PyAudioWPatch (pip install PyAudioWPatch) : PyAudio standard ne
+sait pas ouvrir un flux WASAPI en loopback. Sans lui, la fonctionnalité
+est simplement indisponible, l'enregistrement micro reste inchangé.
+
+Particularité vérifiée sur Windows : un périphérique loopback ne délivre
+AUCUNE donnée tant que rien ne joue (pas même du silence). En mode
+bloquant, la lecture gèlerait ; seul le mode callback est utilisable, et
+les trous doivent être comblés par du silence numérique à la sauvegarde
+pour rester synchronisé avec la vidéo.
+"""
+
+from typing import List, Optional
+
+import numpy as np
+
+try:
+    import pyaudiowpatch
+    WPATCH_AVAILABLE = True
+except ImportError:  # pragma: no cover - dépend de l'environnement
+    pyaudiowpatch = None
+    WPATCH_AVAILABLE = False
+
+
+def system_audio_is_available() -> bool:
+    """True si la capture du son système est possible sur cette machine."""
+    return WPATCH_AVAILABLE
+
+
+def find_loopback_device() -> Optional[dict]:
+    """Retourne le périphérique loopback du haut-parleur par défaut."""
+    if not WPATCH_AVAILABLE:
+        return None
+
+    p = None
+    try:
+        p = pyaudiowpatch.PyAudio()
+        wasapi = p.get_host_api_info_by_type(pyaudiowpatch.paWASAPI)
+        default_out = p.get_device_info_by_index(wasapi['defaultOutputDevice'])
+
+        loopbacks = list(p.get_loopback_device_info_generator())
+        for device in loopbacks:
+            if default_out['name'] in device['name']:
+                return dict(device)
+        return dict(loopbacks[0]) if loopbacks else None
+    except Exception as e:
+        print(f"[Lumina] Loopback indisponible: {e}")
+        return None
+    finally:
+        if p is not None:
+            try:
+                p.terminate()
+            except Exception:
+                pass
+
+
+class SystemAudioCapture:
+    """Capture le son des haut-parleurs pendant l'enregistrement."""
+
+    def __init__(self, gain: float = 1.0):
+        self.gain = gain
+        self.frames: List[bytes] = []
+        self.sample_rate: Optional[int] = None
+        self.channels: Optional[int] = None
+        self._pa = None
+        self._stream = None
+
+    def _apply_gain(self, data: bytes) -> bytes:
+        if self.gain == 1.0:
+            return data
+        samples = np.frombuffer(data, dtype=np.int16)
+        samples = np.clip(samples * self.gain, -32768, 32767).astype(np.int16)
+        return samples.tobytes()
+
+    def start(self) -> bool:
+        """Ouvre le flux loopback. False si indisponible (jamais d'exception)."""
+        device = find_loopback_device()
+        if device is None:
+            return False
+
+        self.frames = []
+        try:
+            self._pa = pyaudiowpatch.PyAudio()
+            self.sample_rate = int(device['defaultSampleRate'])
+            self.channels = int(device['maxInputChannels'])
+
+            def on_chunk(in_data, frame_count, time_info, status):
+                self.frames.append(self._apply_gain(in_data))
+                return (None, pyaudiowpatch.paContinue)
+
+            self._stream = self._pa.open(
+                format=pyaudiowpatch.paInt16,
+                channels=self.channels,
+                rate=self.sample_rate,
+                input=True,
+                input_device_index=device['index'],
+                frames_per_buffer=1024,
+                stream_callback=on_chunk)
+            self._stream.start_stream()
+            return True
+        except Exception as e:
+            print(f"[Lumina] Erreur capture son système: {e}")
+            self.stop()
+            return False
+
+    def stop(self):
+        """Ferme le flux et libère PortAudio."""
+        if self._stream is not None:
+            try:
+                self._stream.stop_stream()
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
+
+        if self._pa is not None:
+            try:
+                self._pa.terminate()
+            except Exception:
+                pass
+            self._pa = None
+
+    def get_audio_bytes(self) -> bytes:
+        """Concatène les chunks capturés."""
+        return b''.join(self.frames)

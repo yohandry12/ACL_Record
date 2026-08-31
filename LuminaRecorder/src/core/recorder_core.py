@@ -18,6 +18,7 @@ from typing import Optional, Tuple, Dict, List, Callable
 from pathlib import Path
 
 from filters.base import FilterChain, FrameFilter
+from core.system_audio import SystemAudioCapture, system_audio_is_available
 
 
 @dataclass
@@ -91,7 +92,8 @@ class RecorderCore:
                  on_filter_disabled: Optional[Callable[[str], None]] = None,
                  on_capture_error: Optional[Callable[[str], None]] = None,
                  audio_device_index: Optional[int] = None,
-                 on_audio_error: Optional[Callable[[str], None]] = None):
+                 on_audio_error: Optional[Callable[[str], None]] = None,
+                 system_audio_enabled: bool = False):
         self.resolution = resolution
         self.fps = fps
         self.audio_enabled = audio_enabled
@@ -99,6 +101,9 @@ class RecorderCore:
         # None = micro par défaut du système
         self.audio_device_index = audio_device_index
         self.on_audio_error = on_audio_error
+        self.system_audio_enabled = system_audio_enabled
+        self._system_capture = None
+        self.system_audio_path = ""
 
         self.filter_chain = FilterChain(
             filters or [],
@@ -174,6 +179,18 @@ class RecorderCore:
             if not self._audio_ready.wait(timeout=5.0):
                 print("[Lumina] Audio lent à démarrer, capture vidéo lancée")
 
+        # Son système (loopback) : indépendant du micro, les deux peuvent
+        # tourner ensemble et seront mixés par FFmpeg
+        if self.system_audio_enabled:
+            self._system_capture = SystemAudioCapture(gain=self.audio_gain)
+            if not self._system_capture.start():
+                self._system_capture = None
+                msg = ("Son système indisponible "
+                       "(installez PyAudioWPatch)")
+                print(f"[Lumina] {msg}")
+                if self.on_audio_error:
+                    self.on_audio_error(msg)
+
         self.recording_thread = threading.Thread(target=self._capture_screen)
         self.recording_thread.daemon = True
         self.recording_thread.start()
@@ -200,6 +217,12 @@ class RecorderCore:
             duration = (datetime.now() - self.start_time).total_seconds()
             print(f"[Lumina] Enregistrement arrêté. Durée: {duration:.2f}s, "
                   f"Frames: {self._frame_count}")
+
+        # Le son système est exposé à part (system_audio_path) pour ne pas
+        # changer le tuple de retour attendu par l'interface
+        if self._system_capture is not None:
+            self._system_capture.stop()
+        self.system_audio_path = self._save_system_audio()
 
         raw_video_path = self._raw_video_path if self._frame_count > 0 else ""
         raw_audio_path = self._save_raw_audio() if self.audio_enabled else ""
@@ -318,7 +341,33 @@ class RecorderCore:
         
         print(f"[Lumina] Fichier brut audio sauvegardé: {wav_path}")
         return str(wav_path)
-    
+
+    def _save_system_audio(self) -> str:
+        """Sauvegarde le son système capté dans un WAV séparé.
+
+        Le mixage avec le micro est délégué à FFmpeg (filtre amix) : les
+        deux sources ont des fréquences différentes (44,1 kHz micro,
+        48 kHz loopback) et FFmpeg rééchantillonne correctement.
+        """
+        if self._system_capture is None or not self._system_capture.frames:
+            return ""
+
+        temp_dir = Path(self._temp_dir)
+        temp_dir.mkdir(exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        wav_path = temp_dir / f"lumina_system_{timestamp}.wav"
+
+        with wave.open(str(wav_path), 'wb') as wf:
+            wf.setnchannels(self._system_capture.channels or 2)
+            wf.setsampwidth(2)
+            wf.setframerate(self._system_capture.sample_rate or 48000)
+            wf.writeframes(self._system_capture.get_audio_bytes())
+
+        print(f"[Lumina] Fichier brut son système sauvegardé: {wav_path}")
+        return str(wav_path)
+
+
     def get_recording_duration(self) -> float:
         """Retourne la durée actuelle de l'enregistrement"""
         if not self.start_time:

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.system_analyzer import SystemAnalyzer, SystemProfile
 from core.recorder_core import RecorderCore, list_input_devices
+from core.system_audio import system_audio_is_available
 from core.encoder import VideoEncoder
 from ui.components import StyledButton, ConfigCard, StatusBadge, ResolutionSelector, VolumeSlider
 from utils.config_manager import ConfigManager
@@ -271,6 +272,23 @@ class MainWindow:
             self.mic_var.set(False)
             mic_check.config(state=tk.DISABLED)
 
+        # Son système (loopback) : capture ce que jouent les haut-parleurs
+        self.system_audio_var = tk.BooleanVar(
+            value=self.config.get_bool('recording', 'system_audio',
+                                       fallback=False))
+        sys_check = tk.Checkbutton(audio_card, text="🔉 Son système",
+                                   variable=self.system_audio_var,
+                                   bg=self.colors['bg_secondary'],
+                                   fg=self.colors['text_primary'],
+                                   anchor='w',
+                                   font=("Segoe UI", 9, "bold"),
+                                   command=self._on_system_audio_toggled)
+        if not system_audio_is_available():
+            self.system_audio_var.set(False)
+            sys_check.config(state=tk.DISABLED,
+                             text="🔉 Son système (installer PyAudioWPatch)")
+        sys_check.pack(fill=tk.X, padx=5, pady=(2, 6))
+
         audio_info = tk.Label(audio_card,
                              text="Volume de sortie (0.5x = réduit)",
                              font=("Segoe UI", 8),
@@ -377,6 +395,11 @@ Vous pouvez les modifier manuellement si nécessaire.
         """Persiste l'activation du micro"""
         self.config.set('recording', 'audio_enabled', self.mic_var.get())
 
+    def _on_system_audio_toggled(self):
+        """Persiste l'activation du son système"""
+        self.config.set('recording', 'system_audio',
+                        self.system_audio_var.get())
+
     def _on_device_changed(self, event=None):
         """Persiste le micro choisi"""
         index = self._selected_device_index()
@@ -436,7 +459,8 @@ Vous pouvez les modifier manuellement si nécessaire.
             filters=AIOptions.build_filters(options),
             on_filter_disabled=self._on_filter_disabled,
             on_capture_error=self._on_capture_error,
-            on_audio_error=self._on_audio_error
+            on_audio_error=self._on_audio_error,
+            system_audio_enabled=self.system_audio_var.get()
         )
 
         # Démarrage
@@ -487,7 +511,9 @@ Vous pouvez les modifier manuellement si nécessaire.
                     fps=self.recommended_settings.get('fps', 30),
                     bitrate=self.bitrate_var.get(),
                     # Le gain est déjà appliqué au WAV pendant la capture, ne pas le réappliquer ici
-                    audio_gain=1.0
+                    audio_gain=1.0,
+                    system_audio_path=getattr(self.recorder,
+                                              'system_audio_path', '')
                 )
 
                 if success:
