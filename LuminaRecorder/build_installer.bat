@@ -50,6 +50,11 @@ if exist "assets\icons\lumina.ico" set ICON_OPT=--icon=assets\icons\lumina.ico
 
 REM src\ est embarque comme donnee : main.py l'ajoute au sys.path via
 REM sys._MEIPASS quand l'application est empaquetee.
+REM Les --hidden-import de modules standard (wave, audioop...) ne sont pas
+REM superflus : PyInstaller ne les detecte pas a travers les imports
+REM indirects de src\, et l'exe plante alors a l'import sans afficher la
+REM moindre fenetre -- le bootloader onefile reste vivant, ce qui donne
+REM l'illusion d'une application lancee mais invisible.
 pyinstaller ^
     --name "LuminaRecorder" ^
     --windowed ^
@@ -68,6 +73,12 @@ pyinstaller ^
     --hidden-import=packaging ^
     --hidden-import=pyaudiowpatch ^
     --hidden-import=win32gui ^
+    --hidden-import=wave ^
+    --hidden-import=audioop ^
+    --hidden-import=configparser ^
+    --hidden-import=subprocess ^
+    --hidden-import=shutil ^
+    --hidden-import=json ^
     --collect-submodules=core ^
     --collect-submodules=ui ^
     --collect-submodules=utils ^
