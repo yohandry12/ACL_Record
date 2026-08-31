@@ -14,9 +14,21 @@ from core.encoder import VideoEncoder
 from .base import PostProcessor, PostProcessResult
 
 
+def _ffprobe_path(ffmpeg: str) -> str:
+    """Chemin de ffprobe déduit de celui de ffmpeg.
+
+    Un simple replace('ffmpeg', 'ffprobe') casserait sur un chemin comme
+    C:\\ffmpeg\\bin\\ffmpeg.exe (le dossier serait renommé lui aussi) :
+    seul le nom du fichier doit changer.
+    """
+    dossier, fichier = os.path.split(ffmpeg)
+    fichier = fichier.replace('ffmpeg', 'ffprobe')
+    return os.path.join(dossier, fichier) if dossier else fichier
+
+
 def _probe_duration(ffmpeg: str, path: str) -> Optional[float]:
     """Durée réelle d'un média, via ffprobe (None si indisponible)."""
-    ffprobe = ffmpeg.replace('ffmpeg', 'ffprobe')
+    ffprobe = _ffprobe_path(ffmpeg)
     try:
         result = subprocess.run(
             [ffprobe, '-v', 'error', '-show_entries', 'format=duration',

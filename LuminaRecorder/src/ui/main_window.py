@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.system_analyzer import SystemAnalyzer, SystemProfile
-from core.recorder_core import RecorderCore, list_input_devices
+from core.recorder_core import RecorderCore, list_input_devices, get_temp_dir
 from core.system_audio import system_audio_is_available
 from core.encoder import VideoEncoder
 from ui.components import StyledButton, ConfigCard, StatusBadge, ResolutionSelector, VolumeSlider
@@ -129,7 +129,7 @@ class MainWindow:
     def _purge_temp_files(self):
         """Supprime les .keep.wav orphelins de temp/ (copies préservées
         pour un post-traitement interrompu avant nettoyage)."""
-        temp_dir = Path(os.getcwd()) / "temp"
+        temp_dir = get_temp_dir()
         try:
             for f in temp_dir.glob("*.keep.wav"):
                 try:

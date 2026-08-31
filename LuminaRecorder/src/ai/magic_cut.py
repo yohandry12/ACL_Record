@@ -310,31 +310,32 @@ class MagicCutEngine:
         Returns:
             Liste de tuples (start_time, end_time) des segments à garder
         """
-        if not self.cut_points:
-            self.generate_cut_points()
-        
-        if not self.cut_points:
-            # Aucun point de coupe, garder tout
+        if not self.silence_segments:
+            self.detect_silences()
+
+        # Les segments à garder sont l'inverse des silences à couper.
+        # Se baser sur les points de coupe redémarrait chaque segment là
+        # où le précédent s'arrêtait : aucun silence n'était retiré.
+        a_couper = sorted(
+            ((s.start_time + self.buffer_before,
+              s.end_time - self.buffer_after)
+             for s in self.silence_segments if s.should_cut),
+            key=lambda bornes: bornes[0])
+
+        if not a_couper:
             return [(0.0, self.duration)]
-        
+
         segments = []
-        current_start = 0.0
-        
-        for i, point in enumerate(self.cut_points):
-            # Segment de current_start à point.time + buffer_after
-            segment_end = point.time + self.buffer_after
-            segment_end = min(segment_end, self.duration)
-            
-            if segment_end > current_start + 0.5:  # Segment minimum de 0.5s
-                segments.append((current_start, segment_end))
-            
-            # Nouveau départ après le silence
-            current_start = point.time + self.buffer_after
-        
-        # Dernier segment jusqu'à la fin
-        if current_start < self.duration - 0.5:
-            segments.append((current_start, self.duration))
-        
+        curseur = 0.0
+        for debut, fin in a_couper:
+            debut = max(curseur, debut)
+            if debut > curseur + 0.5:      # segment minimum de 0.5 s
+                segments.append((curseur, debut))
+            curseur = max(curseur, fin)
+
+        if self.duration - curseur > 0.5:
+            segments.append((curseur, self.duration))
+
         return segments
     
     def estimate_time_saved(self) -> float:

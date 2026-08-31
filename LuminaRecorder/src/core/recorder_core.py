@@ -30,6 +30,20 @@ class AudioDevice:
     is_default: bool
 
 
+def get_temp_dir() -> Path:
+    """Dossier des fichiers bruts d'enregistrement.
+
+    Ancré sur les données applicatives de l'utilisateur plutôt que sur
+    os.getcwd() : lancée depuis un raccourci ou empaquetée avec
+    PyInstaller, l'application écrirait sinon dans un dossier arbitraire,
+    potentiellement non inscriptible (Program Files).
+    """
+    if os.name == 'nt':
+        base = os.environ.get('LOCALAPPDATA') or os.path.expanduser('~')
+        return Path(base) / 'LuminaRecorder' / 'temp'
+    return Path.home() / '.cache' / 'lumina_recorder'
+
+
 def _decode_device_name(raw: str) -> str:
     """Répare les noms PyAudio mal décodés sous Windows.
 
@@ -125,7 +139,7 @@ class RecorderCore:
         self._writer = None            # cv2.VideoWriter, ouvert à la 1re frame
         self._raw_video_path = ""
         self._frame_count = 0
-        self._temp_dir = str(Path(os.getcwd()) / "temp")
+        self._temp_dir = str(get_temp_dir())
 
         self.start_time = None
         self.output_path = None
@@ -249,7 +263,7 @@ class RecorderCore:
         frame_bgr = self.filter_chain.process(frame_bgr)
 
         if self._writer is None:
-            Path(self._temp_dir).mkdir(exist_ok=True)
+            Path(self._temp_dir).mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self._raw_video_path = str(
                 Path(self._temp_dir) / f"lumina_raw_{timestamp}.avi")
@@ -349,7 +363,7 @@ class RecorderCore:
             return ""
 
         temp_dir = Path(self._temp_dir)
-        temp_dir.mkdir(exist_ok=True)
+        temp_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         wav_path = temp_dir / f"lumina_audio_{timestamp}.wav"
@@ -375,7 +389,7 @@ class RecorderCore:
             return ""
 
         temp_dir = Path(self._temp_dir)
-        temp_dir.mkdir(exist_ok=True)
+        temp_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         wav_path = temp_dir / f"lumina_system_{timestamp}.wav"
