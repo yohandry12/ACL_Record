@@ -112,7 +112,15 @@ class LuminaBridge:
             self.recommended = {'resolution': '1280x720', 'fps': 30,
                                 'bitrate': '2500k'}
 
-        self.window = None          # posé par app.py après création
+        # Posé par app.py après création. Le préfixe _ est INDISPENSABLE :
+        # au chargement de la page, pywebview parcourt récursivement tous
+        # les attributs publics du js_api pour les exposer au JS. La
+        # fenêtre mène au Form WinForms (window.native), dont les
+        # propriétés .NET bouclent à l'infini (Bounds.Empty rend un
+        # nouveau Rectangle qui a lui-même .Empty…) : des centaines
+        # d'erreurs « maximum recursion depth exceeded » au démarrage.
+        # pywebview saute tout attribut commençant par _.
+        self._window = None
         self.recorder = None
         self.hotkey = None
         self.state = IDLE
@@ -138,12 +146,12 @@ class LuminaBridge:
         Sérialisé : appelé depuis la minuterie, le thread d'encodage et
         celui de post-traitement, qui tournent en même temps.
         """
-        if self.window is None:
+        if self._window is None:
             return
         with self._emit_lock:
             try:
                 data = json.dumps({'event': event, 'payload': payload})
-                self.window.evaluate_js(f"window.luminaEvent({data})")
+                self._window.evaluate_js(f"window.luminaEvent({data})")
             except Exception as e:
                 # La page a pu être fermée entre-temps : ne jamais
                 # laisser un échec d'affichage remonter dans un thread de
@@ -163,7 +171,7 @@ class LuminaBridge:
         retour visuel et du bouton d'arrêt. La barre compacte, posée en
         haut à droite et toujours au-dessus, résout les deux.
         """
-        if self.window is None:
+        if self._window is None:
             return
         # Le décompte s'affiche déjà dans le widget : basculer dès
         # « pending » évite un saut de fenêtre au moment précis où la
@@ -177,21 +185,21 @@ class LuminaBridge:
                 self._full_position = self._current_position()
                 self._full_geometry = self._current_size()
                 self._compact = True
-                self.window.on_top = True
+                self._window.on_top = True
                 # Le widget se passe de bordure : petit, arrondi, déplacé
                 # par easy_drag
                 self._set_native_frame(False)
-                self.window.resize(*self.COMPACT_SIZE)
-                self.window.move(*self._compact_position())
+                self._window.resize(*self.COMPACT_SIZE)
+                self._window.move(*self._compact_position())
             elif state not in compact_states and self._compact:
                 self._compact = False
-                self.window.on_top = False
+                self._window.on_top = False
                 # Rendre la bordure : sans elle l'utilisateur ne peut ni
                 # déplacer ni redimensionner sa fenêtre
                 self._set_native_frame(True)
-                self.window.resize(*(self._full_geometry or self.full_size()))
+                self._window.resize(*(self._full_geometry or self.full_size()))
                 if self._full_position:
-                    self.window.move(*self._full_position)
+                    self._window.move(*self._full_position)
         except Exception as e:
             # Un échec de redimensionnement ne doit pas interrompre un
             # enregistrement : l'interface est secondaire par rapport à
@@ -218,7 +226,7 @@ class LuminaBridge:
             import clr  # noqa: F401
             from System.Windows.Forms import FormBorderStyle
 
-            form = self.window.native
+            form = self._window.native
             # getattr : « None » est un mot-clé Python, l'attribut ne
             # peut pas être écrit FormBorderStyle.None
             style = (FormBorderStyle.Sizable if visible
@@ -243,7 +251,7 @@ class LuminaBridge:
         qu'il doit retrouver après l'enregistrement, pas celle d'origine.
         """
         try:
-            x, y = int(self.window.x), int(self.window.y)
+            x, y = int(self._window.x), int(self._window.y)
             # Une fenêtre pas encore affichée renvoie parfois 0,0 :
             # inutile de mémoriser une position qui n'a jamais existé
             return (x, y) if (x, y) != (0, 0) else None
@@ -257,7 +265,7 @@ class LuminaBridge:
         quelle plutôt qu'à la taille calculée au démarrage.
         """
         try:
-            width, height = int(self.window.width), int(self.window.height)
+            width, height = int(self._window.width), int(self._window.height)
             if width < 200 or height < 200:
                 return None     # valeur aberrante ou fenêtre non prête
             return (width, height)
@@ -488,11 +496,11 @@ class LuminaBridge:
 
     def choose_folder(self) -> dict:
         """Ouvre le sélecteur de dossier natif."""
-        if self.window is None:
+        if self._window is None:
             return {'ok': False, 'error': "Fenêtre indisponible"}
         try:
             import webview
-            result = self.window.create_file_dialog(webview.FOLDER_DIALOG)
+            result = self._window.create_file_dialog(webview.FOLDER_DIALOG)
             if result:
                 folder = result[0] if isinstance(result, (list, tuple)) else result
                 self.config.set('output', 'save_directory', folder)
@@ -767,7 +775,7 @@ class LuminaBridge:
     def minimize(self) -> dict:
         """Réduit la fenêtre (bouton de la barre de titre)."""
         try:
-            self.window.minimize()
+            self._window.minimize()
             return {'ok': True}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
@@ -776,7 +784,7 @@ class LuminaBridge:
         """Ferme l'application (bouton de la barre de titre)."""
         try:
             self.shutdown()
-            self.window.destroy()
+            self._window.destroy()
             return {'ok': True}
         except Exception as e:
             return {'ok': False, 'error': str(e)}

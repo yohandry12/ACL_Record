@@ -102,7 +102,7 @@ def run() -> int:
         resizable=True,
         easy_drag=True,       # déplace le widget, qui lui est sans bordure
     )
-    bridge.window = window
+    bridge._window = window
 
     def on_start():
         # Le raccourci est enregistré une fois la fenêtre prête : son

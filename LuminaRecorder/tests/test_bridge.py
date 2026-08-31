@@ -105,7 +105,7 @@ def bridge(monkeypatch, tmp_path):
                      recorder_factory=FakeRecorder,
                      encoder_factory=FakeEncoder,
                      analyzer=FakeAnalyzer())
-    b.window = FakeWindow()
+    b._window = FakeWindow()
     return b
 
 
@@ -302,7 +302,7 @@ def test_annulation_pendant_l_attente_ne_capture_rien(bridge, monkeypatch):
 def test_les_changements_d_etat_sont_annonces(bridge):
     bridge.start_recording()
 
-    assert bridge.window.events_named('state')
+    assert bridge._window.events_named('state')
 
 
 def test_une_page_fermee_ne_casse_pas_le_traitement(bridge):
@@ -310,14 +310,14 @@ def test_une_page_fermee_ne_casse_pas_le_traitement(bridge):
     class FenetreMorte:
         def evaluate_js(self, script):
             raise RuntimeError("fenêtre détruite")
-    bridge.window = FenetreMorte()
+    bridge._window = FenetreMorte()
 
     bridge.emit('state', 'recording')     # ne doit pas lever
     assert bridge.start_recording()['ok'] is True
 
 
 def test_emit_sans_fenetre_ne_leve_pas(bridge):
-    bridge.window = None
+    bridge._window = None
 
     bridge.emit('tick', 1)
 
@@ -362,7 +362,7 @@ def test_le_decompte_est_annonce_a_la_page(bridge, monkeypatch):
     bridge.start_recording()
     attendre(lambda: bridge.state == RECORDING)
 
-    envoyes = bridge.window.events_named('countdown')
+    envoyes = bridge._window.events_named('countdown')
     # 3, 2, 1 puis 0 : le dernier chiffre ne doit pas sauter
     assert len(envoyes) == 4
 
@@ -382,7 +382,7 @@ def test_le_widget_apparait_des_le_decompte(bridge):
     fenêtre dans l'enregistrement lui-même."""
     bridge.start_recording()
 
-    assert bridge.window.size == LuminaBridge.COMPACT_SIZE
+    assert bridge._window.size == LuminaBridge.COMPACT_SIZE
 
 
 def test_le_tick_porte_duree_et_taille(bridge, monkeypatch):
@@ -390,8 +390,8 @@ def test_le_tick_porte_duree_et_taille(bridge, monkeypatch):
     chaque battement, pas seulement la durée."""
     demarrer_sans_attendre(bridge, monkeypatch)
 
-    assert attendre(lambda: bridge.window.events_named('tick'))
-    envoye = bridge.window.events_named('tick')[0]
+    assert attendre(lambda: bridge._window.events_named('tick'))
+    envoye = bridge._window.events_named('tick')[0]
     assert '"seconds"' in envoye
     assert '"bytes"' in envoye
 
@@ -428,24 +428,24 @@ def test_la_fenetre_retrouve_sa_place_apres_enregistrement(bridge,
                                                            monkeypatch):
     """L'utilisateur avait déplacé sa fenêtre : la lui rendre collée au
     coin où se tenait le widget est un défaut visible à chaque capture."""
-    bridge.window = FakeWindowGeometry(x=120, y=60, width=900, height=600)
+    bridge._window = FakeWindowGeometry(x=120, y=60, width=900, height=600)
     monkeypatch.setattr(bridge, '_set_native_frame', lambda visible: True)
     demarrer_sans_attendre(bridge, monkeypatch)
 
-    assert bridge.window.size == LuminaBridge.COMPACT_SIZE
+    assert bridge._window.size == LuminaBridge.COMPACT_SIZE
 
     bridge.stop_recording()
     assert attendre(lambda: bridge.state == IDLE)
 
-    assert (bridge.window.x, bridge.window.y) == (120, 60)
-    assert (bridge.window.width, bridge.window.height) == (900, 600)
+    assert (bridge._window.x, bridge._window.y) == (120, 60)
+    assert (bridge._window.width, bridge._window.height) == (900, 600)
 
 
 def test_la_bordure_revient_apres_enregistrement(bridge, monkeypatch):
     """Sans bordure, l'utilisateur ne peut plus ni déplacer ni
     redimensionner sa fenêtre."""
     bordures = []
-    bridge.window = FakeWindowGeometry()
+    bridge._window = FakeWindowGeometry()
     monkeypatch.setattr(bridge, '_set_native_frame',
                         lambda visible: bordures.append(visible) or True)
     demarrer_sans_attendre(bridge, monkeypatch)
