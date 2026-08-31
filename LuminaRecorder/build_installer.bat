@@ -72,6 +72,9 @@ REM superflus : PyInstaller ne les detecte pas a travers les imports
 REM indirects de src\, et l'exe plante alors a l'import sans afficher la
 REM moindre fenetre -- le bootloader onefile reste vivant, ce qui donne
 REM l'illusion d'une application lancee mais invisible.
+REM Les jaraco.* et more_itertools sont exiges par pkg_resources (tire
+REM par keyring) : sans eux l'exe meurt au demarrage sur
+REM " The 'jaraco.text' package is required ".
 pyinstaller ^
     --name "LuminaRecorder" ^
     --windowed ^
@@ -115,6 +118,10 @@ pyinstaller ^
     --hidden-import=webview ^
     --hidden-import=keyring ^
     --hidden-import=keyring.backends.Windows ^
+    --hidden-import=jaraco.text ^
+    --hidden-import=jaraco.functools ^
+    --hidden-import=jaraco.context ^
+    --hidden-import=more_itertools ^
     --hidden-import=clr ^
     --collect-submodules=webview ^
     main.py
