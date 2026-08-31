@@ -65,13 +65,28 @@ def run_classic():
 
 def main():
     """Fonction principale de lancement"""
+    from version import __version__
     print("╔════════════════════════════════════╗")
-    print("║     ✨ LUMINA RECORDER v1.0.0      ║")
+    print(f"║     ✨ LUMINA RECORDER v{__version__:<10s} ║")
     print("║  Capturez votre monde en clarté    ║")
     print("╚════════════════════════════════════╝")
     print()
 
     try:
+        # --diag-ai : imprime la disponibilité des briques IA puis sort.
+        # C'est le seul moyen honnête de vérifier qu'un exe empaqueté
+        # embarque réellement Whisper et l'OCR : les imports gardés
+        # rendent l'application muette sur ce qui manque.
+        if '--diag-ai' in sys.argv:
+            import json
+            from postprocess.subtitles_processor import whisper_is_available
+            from services.ocr_service import ocr_is_available
+            print(json.dumps({
+                'whisper': whisper_is_available(),
+                'ocr': ocr_is_available(),
+            }))
+            return 0
+
         # --classic force l'ancienne interface. Elle est conservée le
         # temps que la nouvelle soit éprouvée à l'usage : un défaut
         # bloquant ne doit laisser personne sans application utilisable.

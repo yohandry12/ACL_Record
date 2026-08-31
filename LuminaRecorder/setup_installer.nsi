@@ -56,8 +56,10 @@ ShowUnInstDetails show
 Section "Lumina Recorder (Requis)" SecMain
     SetOutPath "$INSTDIR"
     
-    ; Fichiers principaux
-    File "dist_installer\LuminaRecorder.exe"
+    ; Application en mode dossier (onedir) : l'exe et son dossier
+    ; _internal. Choisi pour l'édition « full IA » — un onefile de plus
+    ; d'un Go se redéballerait entièrement à CHAQUE lancement.
+    File /r "dist_installer\app\*.*"
     File "dist_installer\README.md"
     File "dist_installer\LICENSE"
     
@@ -99,11 +101,12 @@ Section "Uninstall"
     ; L'application ne doit pas tourner pendant qu'on efface ses fichiers
     ExecWait 'taskkill /F /IM LuminaRecorder.exe' $R2
 
-    ; Suppression des fichiers
-    Delete "$INSTDIR\LuminaRecorder.exe"
-    Delete "$INSTDIR\README.md"
-    Delete "$INSTDIR\LICENSE"
+    ; Suppression récursive : le mode dossier installe des centaines de
+    ; fichiers (_internal). $INSTDIR appartient à l'application — les
+    ; données de l'utilisateur (réglages AppData, clés du coffre,
+    ; vidéos) ne vivent pas ici et ne sont pas touchées.
     Delete "$INSTDIR\uninstall.exe"
+    RMDir /r "$INSTDIR"
     
     ; Suppression des raccourcis
     Delete "$DESKTOP\Lumina Recorder.lnk"

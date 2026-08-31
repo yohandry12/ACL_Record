@@ -65,16 +65,22 @@ if exist "assets\icons\lumina.ico" set ICON_OPT=--icon=assets\icons\lumina.ico
 
 REM src\ est embarque comme donnee : main.py l'ajoute au sys.path via
 REM sys._MEIPASS quand l'application est empaquetee.
-REM Les --exclude-module ecartent la pile IA lourde (PyTorch & cie,
-REM plusieurs Go) : elle est optionnelle par conception (requirements-ai),
-REM et l'embarquer rendrait le onefile enorme et lent a demarrer. Dans
-REM l'exe, sous-titres Whisper et OCR se declarent indisponibles ; l'IA
-REM via Ollama et les API distantes fonctionne normalement (HTTP).
+REM
+REM MODE DOSSIER (onedir), pas --onefile : l'edition « full IA » embarque
+REM PyTorch, Whisper et l'OCR (~1,5 Go depliee). Un onefile de cette
+REM taille se redeballerait entierement a CHAQUE lancement — une minute
+REM d'attente avant la fenetre. Le dossier dist\LuminaRecorder\ part tel
+REM quel dans l'installateur.
+REM
+REM --collect-all easyocr / faster_whisper : leurs fichiers de donnees
+REM (alphabets, configurations) doivent suivre le code, sinon l'import
+REM passe mais l'usage echoue au premier appel.
+REM transformers et tensorboard restent exclus : rien ne les utilise,
+REM PyInstaller les aspirait par des imports optionnels.
 REM Les --hidden-import de modules standard (wave, audioop...) ne sont pas
 REM superflus : PyInstaller ne les detecte pas a travers les imports
 REM indirects de src\, et l'exe plante alors a l'import sans afficher la
-REM moindre fenetre -- le bootloader onefile reste vivant, ce qui donne
-REM l'illusion d'une application lancee mais invisible.
+REM moindre fenetre.
 REM --collect-submodules=pkg_resources embarque son dossier _vendor
 REM (jaraco, appdirs, pyparsing...) : sans lui, l'exe meurt au demarrage
 REM sur " The 'jaraco.text' package is required " puis chaque dependance
@@ -82,20 +88,15 @@ REM vendored manquante l'une apres l'autre.
 pyinstaller ^
     --name "LuminaRecorder" ^
     --windowed ^
-    --onefile ^
     --noconfirm ^
     %ICON_OPT% ^
     --add-data "config;config" ^
     --add-data "assets;assets" ^
     --add-data "src;src" ^
     --paths "src" ^
-    --exclude-module=torch ^
-    --exclude-module=torchvision ^
-    --exclude-module=torchaudio ^
+    --collect-all=easyocr ^
+    --collect-all=faster_whisper ^
     --exclude-module=transformers ^
-    --exclude-module=easyocr ^
-    --exclude-module=faster_whisper ^
-    --exclude-module=ctranslate2 ^
     --exclude-module=tensorboard ^
     --hidden-import=psutil ^
     --hidden-import=mss ^
@@ -133,13 +134,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [OK] Exécutable généré dans dist\LuminaRecorder.exe
+echo [OK] Application générée dans dist\LuminaRecorder\
 echo.
 
-REM Création du dossier installateur
+REM Création du dossier installateur : l'application onedir entière
+REM part dans dist_installer\app, empaquetée par File /r côté NSIS
 echo [INSTALLATEUR] Préparation du programme d'installation...
 mkdir dist_installer 2>nul
-copy dist\LuminaRecorder.exe dist_installer\ >nul
+xcopy /e /i /q /y dist\LuminaRecorder dist_installer\app >nul
 copy README.md dist_installer\ >nul
 copy LICENSE dist_installer\ >nul 2>nul
 
@@ -171,7 +173,7 @@ echo ║           BUILD TERMINE AVEC SUCCES           ║
 echo ╚═══════════════════════════════════════════════╝
 echo.
 echo Fichiers générés :
-echo   - dist\LuminaRecorder.exe (exécutable portable)
+echo   - dist\LuminaRecorder\ (application, mode dossier)
 echo   - dist_installer\Lumina_Setup_%APP_VERSION%.exe (installateur)
 echo Relancer ce setup sur un poste déjà équipé propose la mise à jour.
 echo.
