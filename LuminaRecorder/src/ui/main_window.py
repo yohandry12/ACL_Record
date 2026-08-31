@@ -18,6 +18,7 @@ from core.recorder_core import RecorderCore
 from core.encoder import VideoEncoder
 from ui.components import StyledButton, ConfigCard, StatusBadge, ResolutionSelector, VolumeSlider
 from utils.config_manager import ConfigManager
+from services.ocr_service import ocr_is_available
 from filters.privacy_blur_filter import PrivacyBlurFilter
 from filters.clean_canvas_filter import CleanCanvasFilter
 from filters.overlay_filter import OverlayFilter
@@ -53,7 +54,10 @@ class AIOptions:
     @staticmethod
     def build_filters(options: dict) -> list:
         filters = []
-        if options.get('privacy_blur'):
+        # Sans moteur OCR, le flou n'a aucune zone à masquer : on n'ajoute
+        # pas un filtre inerte, même si le .ini garde la valeur d'une
+        # session où easyocr était installé
+        if options.get('privacy_blur') and ocr_is_available():
             filters.append(PrivacyBlurFilter())
         if options.get('clean_canvas'):
             filters.append(CleanCanvasFilter())
@@ -258,6 +262,10 @@ class MainWindow:
             if key == 'subtitles' and not whisper_is_available():
                 state = tk.DISABLED
                 cb.config(text=label + " (installer faster-whisper)")
+            elif key == 'privacy_blur' and not ocr_is_available():
+                state = tk.DISABLED
+                var.set(False)
+                cb.config(text=label + " (installer easyocr)")
             cb.config(state=state)
             cb.pack(fill=tk.X, padx=5)
             self.ai_vars[key] = var

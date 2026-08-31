@@ -14,10 +14,23 @@ Supporte :
 """
 
 import cv2
+import importlib.util
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 import time
+
+
+def ocr_is_available() -> bool:
+    """True si un moteur OCR réel est installé (easyocr ou pytesseract).
+
+    Sans moteur, OCRService retombe sur _simulate_ocr() qui renvoie des
+    textes de démonstration : la détection automatique de zones sensibles
+    serait alors muette. L'UI grise donc l'option plutôt que de laisser
+    croire à une protection active.
+    """
+    return (importlib.util.find_spec("easyocr") is not None
+            or importlib.util.find_spec("pytesseract") is not None)
 
 
 @dataclass
