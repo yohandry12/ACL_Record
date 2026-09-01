@@ -44,7 +44,7 @@ EXTENSIONS: Dict[str, dict] = {
         'version': "1.0",
         'archive': "lumina-ext-soustitres-1.0.zip",
         'url': f"{DEPOT}/ext-1.0/lumina-ext-soustitres-1.0.zip",
-        'taille_octets': 72231409,
+        'taille_octets': 72289599,
     },
     'ocr': {
         'nom': "Reconnaissance de texte",

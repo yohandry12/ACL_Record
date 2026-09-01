@@ -27,7 +27,19 @@ python build_extensions.py sous_titres  # une seule
 ```
 
 Le script installe les paquets avec pip, retire ceux que l'exécutable
-embarque déjà, vérifie que le module s'importe, puis compresse.
+embarque déjà, **exerce le module** dans un interpréteur séparé, puis
+compresse.
+
+**Ne pas alléger à l'aveugle.** Une première version du script
+supprimait les `*.pyi` en les croyant réservés au développement.
+`scikit-image` les lit à l'exécution via `lazy_loader`, qui résout ses
+imports différés depuis `skimage/__init__.pyi` : l'archive OCR de
+604 Mo échouait à l'import. Le contrôle `verifier()` l'a rattrapée
+avant publication — c'est précisément sa raison d'être.
+
+Ce contrôle va au-delà d'un simple `import` : les paquets à chargement
+différé réussissent l'import puis échouent au premier usage réel. Le
+champ `usage_test` de chaque recette exerce la chaîne qui compte.
 
 **Pourquoi retirer des paquets.** `enregistrer_chemins_externes()` place
 le dossier des extensions en **tête** de `sys.path`. Un numpy présent

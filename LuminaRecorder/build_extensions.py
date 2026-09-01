@@ -42,13 +42,25 @@ RECETTES = {
     'sous_titres': {
         'archive': 'lumina-ext-soustitres-1.0.zip',
         'paquets': ['faster-whisper>=1.0.0'],
-        # Vérifie que l'archive est utilisable avant de la publier
+        # Vérifie que l'archive est utilisable avant de la publier.
+        # On instancie la classe que Lumina utilise vraiment, sans
+        # télécharger de modèle : un simple « import » ne dit rien des
+        # imports différés, qui échouent plus tard.
         'import_test': 'faster_whisper',
+        'usage_test': 'from faster_whisper import WhisperModel;'
+                      ' assert WhisperModel',
     },
     'ocr': {
         'archive': 'lumina-ext-ocr-1.0.zip',
         'paquets': ['easyocr>=1.7.0'],
         'import_test': 'easyocr',
+        # easyocr charge skimage en différé : l'import seul ne le
+        # révèle pas. On exerce la chaîne qui a réellement cassé.
+        'usage_test': 'import easyocr;'
+                      ' from skimage import io;'
+                      ' import numpy as np;'
+                      ' assert io.imread is not None;'
+                      ' assert easyocr.Reader',
     },
 }
 
@@ -107,7 +119,12 @@ def _alleger(cible: Path) -> None:
         # include/ de torch : en-têtes C++ inutiles à l'exécution
         if dossier.is_dir() and (dossier.parent / 'lib').exists():
             shutil.rmtree(dossier, ignore_errors=True)
-    for motif in ('*.pyi', '*.h', '*.hpp'):
+    # Les .pyi ne sont PAS supprimés. Vérifié à mes dépens : scikit-image
+    # les lit à l'exécution via lazy_loader, qui résout ses imports
+    # différés depuis skimage/__init__.pyi. Les retirer produit une
+    # archive de 604 Mo qui échoue à l'import — c'est le contrôle
+    # verifier() qui l'a rattrapé avant publication.
+    for motif in ('*.h', '*.hpp'):
         for fichier in cible.rglob(motif):
             try:
                 fichier.unlink()
@@ -115,22 +132,29 @@ def _alleger(cible: Path) -> None:
                 pass
 
 
-def verifier(cible: Path, module: str) -> None:
-    """Importe le module depuis le dossier préparé, comme le fera Lumina.
+def verifier(cible: Path, recette: dict) -> None:
+    """Exerce le module depuis le dossier préparé, comme le fera Lumina.
 
-    Sans ce contrôle, une archive amputée d'un doublon de trop ne se
+    Sans ce contrôle, une archive amputée d'un fichier de trop ne se
     révélerait cassée que chez l'utilisateur, après un téléchargement de
-    plusieurs centaines de mégaoctets.
+    plusieurs centaines de mégaoctets. C'est exactement ce qui est
+    arrivé : la suppression des .pyi produisait une archive OCR de
+    604 Mo qui échouait à l'import de skimage.
+
+    On va au-delà du simple import : les paquets à chargement différé
+    (skimage via lazy_loader) réussissent l'import puis échouent au
+    premier usage réel.
     """
-    code = (f"import sys; sys.path.insert(0, r'{cible}');"
-            f" import {module}; print({module}.__name__, 'OK')")
+    module = recette['import_test']
+    usage = recette.get('usage_test') or f"import {module}"
+    code = f"import sys; sys.path.insert(0, r'{cible}'); {usage}; print('OK')"
     resultat = subprocess.run([sys.executable, '-c', code],
                               capture_output=True, text=True)
     if resultat.returncode != 0:
         raise RuntimeError(
-            f"l'archive est inutilisable : import {module} échoue\n"
+            f"l'archive est inutilisable : {module} échoue à l'usage\n"
             f"{resultat.stderr[-2000:]}")
-    print(f"    import {module} : OK")
+    print(f"    usage réel de {module} : OK")
 
 
 def compresser(cible: Path, archive: Path) -> None:
@@ -155,7 +179,7 @@ def construire(cle: str) -> dict:
     deplie = _taille_dossier(travail)
     print(f"  déplié : {_mo(deplie):.0f} Mo")
 
-    verifier(travail, recette['import_test'])
+    verifier(travail, recette)
 
     archive = SORTIE / recette['archive']
     compresser(travail, archive)
@@ -190,9 +214,41 @@ def main() -> int:
         print(f"  {r['cle']:12} 'taille_octets': {r['octets']},"
               f"   # {_mo(r['octets']):.0f} Mo compressés,"
               f" {r['deplie_mo']} Mo dépliés")
+
+    ecarts = _comparer_au_catalogue(resultats)
     print(f"\nArchives dans {SORTIE}")
-    print("Les attacher à la release GitHub sous le tag « ext-1.0 ».")
+    if ecarts:
+        print("\n!! Le catalogue ne correspond PAS aux archives produites :")
+        for ligne in ecarts:
+            print(f"   {ligne}")
+        print("   Corriger avant de publier : download_setup détruit une")
+        print("   archive dont la taille reçue diffère de celle annoncée.")
+        return 1
+    print("Catalogue à jour. Attacher les archives à la release GitHub")
+    print("sous le tag « ext-1.0 ».")
     return 0
+
+
+def _comparer_au_catalogue(resultats: list) -> list:
+    """Signale tout écart entre le catalogue et les archives produites.
+
+    Recopier les tailles à la main se désynchronise dès qu'une archive
+    est reconstruite — c'est arrivé pour 58 Ko d'écart, assez pour que
+    download_setup détruise le téléchargement.
+    """
+    try:
+        sys.path.insert(0, str(RACINE / 'src'))
+        from services.extension_installer import EXTENSIONS
+    except Exception as e:
+        return [f"catalogue illisible : {e}"]
+
+    ecarts = []
+    for r in resultats:
+        annonce = EXTENSIONS.get(r['cle'], {}).get('taille_octets', 0)
+        if annonce != r['octets']:
+            ecarts.append(f"{r['cle']} : catalogue {annonce}, "
+                          f"archive {r['octets']}")
+    return ecarts
 
 
 if __name__ == '__main__':
