@@ -6,4 +6,4 @@ L'installateur compare cette valeur à celle du registre pour proposer
 la mise à jour d'une installation existante.
 """
 
-__version__ = "1.2.1"
+__version__ = "1.3.0"
