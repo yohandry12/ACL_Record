@@ -200,7 +200,8 @@ function openUpdateModal() {
   $('update-progress').hidden = true;
   $('update-install').disabled = false;
   $('update-later').disabled = false;
-  $('update-modal').hidden = false;
+  // La boite grandit depuis la pastille de version qui l'a ouverte
+  ancrerModale('update-modal', 'version-tag');
 }
 
 function closeUpdateModal() {
@@ -408,10 +409,46 @@ function setAiStatus(message, kind) {
   node.className = 'modal-status' + (kind ? ' ' + kind : '');
 }
 
+/* Ancre l'ouverture d'une boite de dialogue sur le bouton qui l'a
+ * declenchee : la boite grandit depuis ce bouton au lieu de surgir du
+ * centre. La relation entre l'element clique et ce qui apparait reste
+ * ainsi lisible. Sans declencheur, le centre est le repli (CSS). */
+function ancrerModale(modalId, triggerId) {
+  const modal = $(modalId);
+  const trigger = $(triggerId);
+  const card = modal && modal.querySelector('.modal-card');
+  if (!card) return;
+  if (!trigger) {
+    card.style.removeProperty('--origin-x');
+    card.style.removeProperty('--origin-y');
+    modal.hidden = false;
+    return;
+  }
+  const t = trigger.getBoundingClientRect();
+
+  // La boite n'a pas de geometrie tant qu'elle est masquee : on la
+  // rend visible mais transparente le temps de la mesurer, sinon
+  // l'animation demarrerait avant que l'origine soit posee et la
+  // premiere ouverture partirait du centre.
+  card.style.visibility = 'hidden';
+  modal.hidden = false;
+  const c = card.getBoundingClientRect();
+  // Coordonnees du declencheur, exprimees dans le repere de la boite
+  card.style.setProperty('--origin-x',
+    `${t.left + t.width / 2 - c.left}px`);
+  card.style.setProperty('--origin-y',
+    `${t.top + t.height / 2 - c.top}px`);
+  // Rejoue l'animation depuis la bonne origine
+  card.style.animation = 'none';
+  void card.offsetWidth;            // force le recalcul
+  card.style.removeProperty('animation');
+  card.style.removeProperty('visibility');
+}
+
 async function openAiModal() {
   aiConfig = await call('get_ai_config');
   renderAiModal();
-  $('ai-modal').hidden = false;
+  ancrerModale('ai-modal', 'open-ai-config');
 }
 
 function closeAiModal() {

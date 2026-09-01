@@ -48,7 +48,11 @@ const DEFAULTS = {
   interactionRadius: 1.5,
   interactionStrength: 0.5,
   rippleIntensity: 1,
-  opacity: 0.5,
+  // Le fond n'est plus un motif regarde pour lui-meme : c'est la
+  // matiere que les surfaces translucides floutent. Il doit se lire
+  // comme une texture derriere le verre, pas comme un decor qui
+  // rivalise avec le contenu.
+  opacity: 0.3,
 };
 
 // Plafond de particules : au-delà, le coût de dessin devient perceptible

@@ -9,6 +9,11 @@
  */
 
 :root {
+  /* --- Fonds ---
+   * Les surfaces ne sont plus des aplats : ce sont des matériaux
+   * translucides posés sur le fond animé. La couleur ne fait que
+   * teinter ce qui est flouté derrière (voir « Matériaux » plus bas).
+   */
   --bg-base: #131417;
   --bg-panel: #1A1C20;
   --bg-elevated: #22252A;
@@ -20,19 +25,86 @@
   --text-dim: #9AA0A6;
   --text-faint: #6B7178;
 
-  --accent: #F59E0B;
-  --accent-soft: rgba(245, 158, 11, 0.14);
-  --rec: #EF4444;
-  --rec-soft: rgba(239, 68, 68, 0.16);
-  --ok: #34D399;
+  /* --- Accents en oklch ---
+   * Même couleur perçue qu'avant (l'ambre #F59E0B, le rouge #EF4444),
+   * mais exprimée en luminosité/chroma/teinte : les états se dérivent
+   * en ne bougeant QUE la luminosité, donc sans dérive de teinte —
+   * impossible à garantir avec des hex choisis à la main.
+   */
+  --accent: oklch(76.9% 0.166 70.1);
+  --accent-hi: oklch(83% 0.166 70.1);      /* survol */
+  --accent-lo: oklch(70% 0.166 70.1);      /* pressé */
+  --accent-soft: oklch(76.9% 0.166 70.1 / 0.14);
+  --rec: oklch(64.5% 0.216 24.5);
+  --rec-hi: oklch(71% 0.216 24.5);
+  --rec-soft: oklch(64.5% 0.216 24.5 / 0.16);
+  --ok: oklch(78% 0.144 163);
 
   --radius: 10px;
   --radius-sm: 6px;
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Police variable si présente, sinon repli système. Rien n'est
-   * téléchargé : l'application doit fonctionner hors ligne. */
-  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  /* --- Mouvement ---
+   * Des ressorts, pas des courbes de durée fixe : c'est ce qui donne
+   * aux applications macOS leur sensation de matière. linear() permet
+   * d'échantillonner une vraie courbe de ressort sans aucune
+   * librairie — vérifié disponible dans WebView2 (Chromium 151).
+   *
+   * Règle de composition : le rebond n'apparaît QUE si un geste l'a
+   * précédé. Un panneau qui apparaît en fondu ne rebondit pas.
+   */
+
+  /* Amorti critique (ζ = 1) — aucun dépassement, arrivée douce.
+   * Le défaut de toute l'interface. */
+  --spring: linear(
+    0, 0.0009, 0.0062, 0.0176, 0.0353, 0.0591, 0.0885, 0.1229,
+    0.1616, 0.2039, 0.2492, 0.2967, 0.3459, 0.3962, 0.4471, 0.4981,
+    0.5488, 0.5988, 0.6478, 0.6954, 0.7415, 0.7858, 0.8281, 0.8683,
+    0.9063, 0.9419, 0.9752, 1.0061, 1.0346, 1.0607, 1
+  );
+  /* Léger dépassement (ζ ≈ 0.75) — réservé à ce qui suit une action
+   * de l'utilisateur : bascule du widget, ouverture d'une modale. */
+  --spring-bounce: linear(
+    0, 0.0135, 0.0492, 0.1006, 0.1624, 0.2306, 0.3018, 0.3736,
+    0.4441, 0.5119, 0.576, 0.6357, 0.6907, 0.7409, 0.7862, 0.8268,
+    0.8629, 0.8947, 0.9226, 0.9469, 0.9678, 0.9856, 1.0007, 1.0133,
+    1.0236, 1.0319, 1.0384, 1.0433, 1.0468, 1.049, 1.0501, 1.0503,
+    1.0497, 1.0485, 1.0468, 1.0447, 1.0423, 1.0397, 1.037, 1.0342,
+    1.0313, 1.0285, 1.0257, 1.023, 1.0204, 1.0179, 1.0156, 1.0134,
+    1.0113, 1.0094, 1.0077, 1.0061, 1.0047, 1.0034, 1.0022, 1.0012,
+    1.0004, 0.9997, 0.9992, 0.9989, 1
+  );
+  /* Propriétés non spatiales : couleur, opacité — pas de ressort */
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);   /* compat : ancien nom */
+
+  /* Durées : la « réponse » du ressort, pas une durée d'animation */
+  --t-fast: 140ms;      /* pression, survol */
+  --t-base: 320ms;      /* transitions courantes */
+  --t-slow: 420ms;      /* changements d'état de la fenêtre */
+
+  /* --- Matériaux ---
+   * Trois poids hiérarchisés, comme chez Apple : plus une surface est
+   * grande et structurante, plus elle est épaisse.
+   */
+  --mat-thick: saturate(180%) blur(30px);   /* barre de titre, modales */
+  --mat-medium: saturate(160%) blur(20px);  /* panneaux */
+  --mat-thin: saturate(140%) blur(10px);    /* champs, puces */
+
+  /* Bord supérieur clair : la lumière qui accroche le matériau */
+  --edge-light: rgba(255, 255, 255, 0.08);
+
+  /* Ombres douces multi-couches, jamais une ombre unique et dure */
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.24),
+                  0 8px 24px rgba(0, 0, 0, 0.28);
+  --shadow-modal: 0 2px 8px rgba(0, 0, 0, 0.32),
+                  0 24px 64px rgba(0, 0, 0, 0.48);
+
+  /* Police système en tête : elle embarque déjà les tables de crénage
+   * et l'ajustement optique. Rien n'est téléchargé — l'application
+   * doit fonctionner hors ligne. */
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI",
+                  system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -78,14 +150,20 @@ body.compact .backdrop { display: none; }
 
 /* ---------- Barre de titre ---------- */
 
+/* Matériau épais : le fond animé passe dessous et se floute, au lieu
+ * d'être masqué par un aplat. Aucun trait de séparation dur — la
+ * démarcation vient du matériau lui-même et de son bord lumineux. */
 .titlebar {
   height: 38px;
   flex: none;
   display: flex;
   align-items: center;
   padding: 0 6px 0 14px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+  background: rgba(26, 28, 32, 0.72);
+  backdrop-filter: var(--mat-thick);
+  -webkit-backdrop-filter: var(--mat-thick);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 1px 0 var(--edge-light);
 }
 
 .brand {
@@ -93,6 +171,8 @@ body.compact .backdrop { display: none; }
   align-items: center;
   gap: 8px;
   font-weight: 600;
+  /* Petite taille en capitales : le crénage s'ouvre pour rester
+   * lisible — l'inverse de ce qu'on fait sur un grand titre */
   letter-spacing: 0.14em;
   font-size: 12px;
 }
@@ -229,22 +309,35 @@ body.compact .backdrop { display: none; }
   font-weight: 600;
   letter-spacing: 0.04em;
   cursor: pointer;
+  backdrop-filter: var(--mat-thin);
+  -webkit-backdrop-filter: var(--mat-thin);
+  box-shadow: var(--shadow-panel), inset 0 1px 0 var(--edge-light);
   /* transform et opacity uniquement : animer width/height forcerait un
-   * recalcul de mise en page à chaque image */
-  transition: transform 150ms var(--ease),
-              background 150ms var(--ease),
-              border-color 150ms var(--ease),
-              box-shadow 150ms var(--ease);
+   * recalcul de mise en page à chaque image.
+   * Le déplacement suit un ressort, la couleur non : une couleur qui
+   * rebondit n'a aucun sens physique. */
+  transition: transform var(--t-base) var(--spring),
+              background var(--t-fast) var(--ease-out),
+              border-color var(--t-fast) var(--ease-out),
+              box-shadow var(--t-base) var(--ease-out);
 }
 
 .record-btn:hover:not(:disabled) {
   transform: translateY(-1px);
   background: var(--bg-hover);
   border-color: var(--accent);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5),
+              inset 0 1px 0 var(--edge-light);
 }
 
-.record-btn:active:not(:disabled) { transform: translateY(0); }
+/* Le retour naît à la PRESSION, pas au clic relâché : c'est ce qui
+ * fait la différence entre une interface qui répond et une qui subit.
+ * Transition très courte — au-delà de ~100 ms l'enfoncement se perçoit
+ * comme du retard. */
+.record-btn:active:not(:disabled) {
+  transform: scale(0.975);
+  transition-duration: 90ms;
+}
 
 .record-btn:disabled { opacity: 0.45; cursor: default; }
 
@@ -292,11 +385,16 @@ body[data-state="pending"] .record-btn {
   color: var(--text-dim);
 }
 
+/* Crénage lié à la taille : à 22px le chrono est déjà grand, il se
+ * resserre légèrement. L'ancien +0.06em l'écartait — l'inverse de ce
+ * que demande un grand corps, et contradictoire avec le chrono 40px
+ * du widget qui, lui, était bien resserré. */
 .timer {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   font-size: 22px;
   font-weight: 300;
-  letter-spacing: 0.06em;
+  letter-spacing: -0.005em;
+  line-height: 1.15;
   color: var(--text-dim);
   /* Chiffres de largeur fixe : sinon le compteur tressaute à chaque
    * seconde quand un 1 remplace un 8 */
@@ -328,10 +426,17 @@ body[data-state="recording"] .timer { color: var(--text); }
   overflow: hidden;
 }
 
+/* Matériau moyen : moins épais que la barre de titre et les modales,
+ * assez pour détacher la colonne du fond. Le bord clair en haut et
+ * l'ombre douce en dessous donnent l'épaisseur. */
 .panel {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
+  background: rgba(26, 28, 32, 0.66);
+  backdrop-filter: var(--mat-medium);
+  -webkit-backdrop-filter: var(--mat-medium);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-top-color: var(--edge-light);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
   padding: 12px 13px;
   display: flex;
   flex-direction: column;
@@ -375,11 +480,21 @@ select, .btn-sub {
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 150ms var(--ease), background 150ms var(--ease);
+  backdrop-filter: var(--mat-thin);
+  -webkit-backdrop-filter: var(--mat-thin);
+  box-shadow: inset 0 1px 0 var(--edge-light);
+  transition: border-color var(--t-fast) var(--ease-out),
+              background var(--t-fast) var(--ease-out),
+              transform var(--t-base) var(--spring);
 }
 select:hover, .btn-sub:hover {
   border-color: var(--border-bright);
   background: var(--bg-hover);
+}
+/* Réponse à la pression, pas au relâchement */
+select:active, .btn-sub:active {
+  transform: scale(0.98);
+  transition-duration: 90ms;
 }
 select:focus-visible, .btn-sub:focus-visible {
   outline: 2px solid var(--accent);
@@ -424,7 +539,8 @@ select:disabled { opacity: 0.4; cursor: default; }
   fill: none;
   opacity: 0;
   transform: scale(0.5);
-  transition: opacity 140ms var(--ease), transform 140ms var(--ease);
+  transition: opacity 140ms var(--ease-out),
+              transform 300ms var(--spring-bounce);
 }
 
 .check input:checked + .box {
@@ -459,7 +575,7 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--bg-panel);
-  transition: transform 130ms var(--ease);
+  transition: transform var(--t-base) var(--spring);
 }
 input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.2); }
 
@@ -509,6 +625,23 @@ body.compact .panels,
 body.compact .progress-wrap,
 body.compact .result { display: none; }
 
+/* AUCUN matériau translucide en mode widget.
+ *
+ * Mesuré : avec un backdrop-filter actif quelque part dans la page —
+ * même sur la barre de titre, masquée ici — la fenêtre bascule dans un
+ * mode de composition où SetWindowDisplayAffinity(EXCLUDEFROMCAPTURE)
+ * ne l'exclut plus, et le widget se réincruste dans la vidéo (mesuré :
+ * 9,7 % de rouge dans le coin, contre 0,01 % sans flou).
+ *
+ * Le widget est opaque de toute façon : le flou n'y apporterait rien,
+ * et il coûterait du GPU pendant la capture. */
+body.compact *,
+body.compact *::before,
+body.compact *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 .widget { display: none; }
 
 body.compact .widget {
@@ -556,13 +689,15 @@ body.compact .widget {
   font-variant-numeric: tabular-nums;
 }
 
+/* Le plus grand corps de l'interface : crénage le plus serré,
+ * interlignage le plus court — les deux suivent la taille */
 .widget-time {
   margin-top: 1px;
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   font-size: 40px;
   font-weight: 300;
-  line-height: 1.06;
-  letter-spacing: -0.01em;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
@@ -601,8 +736,9 @@ body.compact .widget {
   background: #0D0E11;
   color: #fff;
   cursor: pointer;
-  transition: background 140ms var(--ease), border-color 140ms var(--ease),
-              transform 140ms var(--ease);
+  transition: background var(--t-fast) var(--ease-out),
+              border-color var(--t-fast) var(--ease-out),
+              transform var(--t-base) var(--spring);
 }
 /* Inversion au survol plutôt que passage au rouge : le bouton repose
    sur la bande rouge, il y disparaîtrait. */
@@ -716,14 +852,18 @@ body[data-state="pending"] .countdown { display: grid; }
 }
 .provider-line .offsite { color: var(--accent); }
 
+/* Tâche modale : le voile assombrit ET recule l'arrière-plan, au lieu
+ * de simplement le noircir — la hiérarchie se lit dans la profondeur. */
 .modal {
   position: fixed;
   inset: 0;
   z-index: 10;
   display: grid;
   place-items: center;
-  background: rgba(8, 9, 11, 0.72);
-  animation: fade-in 160ms var(--ease);
+  background: rgba(8, 9, 11, 0.5);
+  backdrop-filter: blur(6px) saturate(120%);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  animation: fade-in 200ms var(--ease-out);
 }
 .modal[hidden] { display: none; }
 
@@ -737,16 +877,28 @@ body[data-state="pending"] .countdown { display: grid; }
   display: flex;
   flex-direction: column;
   gap: 13px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-bright);
+  /* Matériau épais : la boîte est une surface structurante posée
+   * au-dessus de tout le reste */
+  background: rgba(26, 28, 32, 0.82);
+  backdrop-filter: var(--mat-thick);
+  -webkit-backdrop-filter: var(--mat-thick);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(255, 255, 255, 0.14);
   border-radius: 12px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
-  animation: modal-rise 200ms var(--ease);
+  box-shadow: var(--shadow-modal);
+  /* Le matériau se « matérialise » : l'échelle et le flou arrivent
+   * ensemble, avec un léger dépassement — l'ouverture répond à un
+   * clic, elle a donc le droit de rebondir. */
+  animation: modal-rise 380ms var(--spring-bounce);
+  /* Ancré sur le déclencheur : la boîte grandit depuis le bouton qui
+   * l'a ouverte, au lieu de surgir du centre. app.js pose les
+   * variables au clic ; sans elles, le centre reste le repli. */
+  transform-origin: var(--origin-x, 50%) var(--origin-y, 50%);
 }
 
 @keyframes modal-rise {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to   { opacity: 1; transform: none; }
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 .modal-head {
@@ -829,10 +981,23 @@ body[data-state="pending"] .countdown { display: grid; }
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: filter 140ms var(--ease), transform 140ms var(--ease);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3),
+              inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: background var(--t-fast) var(--ease-out),
+              transform var(--t-base) var(--spring);
 }
-.btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
-.btn-primary:active { transform: none; }
+/* La luminosité varie par la couleur, pas par un filtre : en oklch on
+ * ne bouge que la clarté, donc la teinte ne dérive pas */
+.btn-primary:hover {
+  background: var(--accent-hi);
+  border-color: var(--accent-hi);
+  transform: translateY(-1px);
+}
+.btn-primary:active {
+  background: var(--accent-lo);
+  transform: scale(0.97);
+  transition-duration: 90ms;
+}
 
 /* ---------- Accessibilité ---------- */
 
@@ -845,6 +1010,48 @@ body[data-state="pending"] .countdown { display: grid; }
     transition-duration: 0.01ms !important;
   }
   .panel { opacity: 1; transform: none; }
+  /* Mouvement réduit ne veut pas dire aucun retour : l'échelle
+   * disparaît, la couleur reste — elle ne provoque aucun trouble
+   * vestibulaire et porte l'essentiel de l'information. */
+  .record-btn:active:not(:disabled),
+  .btn-primary:active,
+  select:active, .btn-sub:active,
+  .widget-actions button:active { transform: none !important; }
+}
+
+/* Certains utilisateurs désactivent la transparence : le flou devient
+ * alors du bruit qui gêne la lecture. Les matériaux redeviennent des
+ * surfaces pleines — la hiérarchie passe par la couleur et la bordure. */
+@media (prefers-reduced-transparency: reduce) {
+  .titlebar, .panel, .modal-card, .record-btn, select, .btn-sub {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .titlebar { background: var(--bg-panel); }
+  .panel { background: var(--bg-panel); }
+  .modal-card { background: var(--bg-panel); }
+  .record-btn, select, .btn-sub { background: var(--bg-elevated); }
+  .modal {
+    background: rgba(8, 9, 11, 0.88);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .backdrop { display: none; }
+}
+
+/* Contraste renforcé : fonds quasi opaques et bordures affirmées */
+@media (prefers-contrast: more) {
+  .titlebar, .panel, .modal-card {
+    background: #0F1013;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--text-faint);
+  }
+  .record-btn, select, .btn-sub {
+    background: #191B1F;
+    border-color: var(--text-dim);
+  }
+  .backdrop { display: none; }
 }
 
 /* ---------- Fenêtre réduite ---------- */
