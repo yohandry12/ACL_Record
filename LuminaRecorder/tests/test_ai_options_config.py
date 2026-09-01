@@ -96,3 +96,105 @@ def test_magic_cut_threshold_reaches_processor():
 
     procs = AIOptions.build_postprocessors(opts)
     assert procs[0].max_silence_duration == 3.0
+
+
+# --- Plugins dans la chaîne de filtres ---
+
+def _info_plugin(identifiant="faux", nom="Faux", erreur=""):
+    from plugins.loader import PluginInfo
+    return PluginInfo(nom=nom, description="", auteur="t", version="1.0",
+                      api=1, chemin=f"{identifiant}.py",
+                      identifiant=identifiant, erreur=erreur)
+
+
+def test_les_plugins_actives_rejoignent_la_chaine(monkeypatch):
+    """Un plugin activé doit filtrer les images comme un filtre natif."""
+    from core import ai_options
+    from filters.base import FrameFilter
+
+    class FauxPlugin(FrameFilter):
+        name = "Faux"
+
+        def process(self, frame):
+            return frame
+
+    monkeypatch.setattr(ai_options, 'lister_plugins',
+                        lambda: [_info_plugin()])
+    monkeypatch.setattr(ai_options, 'charger_plugin', lambda i: FauxPlugin())
+
+    filtres = AIOptions.build_filters({}, plugins_actifs=['faux'])
+
+    assert any(f.name == "Faux" for f in filtres)
+
+
+def test_un_plugin_non_active_reste_absent(monkeypatch):
+    """Rien ne s'exécute sans décision explicite de l'utilisateur."""
+    from core import ai_options
+
+    appels = []
+    monkeypatch.setattr(ai_options, 'lister_plugins',
+                        lambda: [_info_plugin()])
+    monkeypatch.setattr(ai_options, 'charger_plugin',
+                        lambda i: appels.append(i))
+
+    AIOptions.build_filters({}, plugins_actifs=[])
+
+    assert appels == []
+
+
+def test_plugin_defectueux_ne_casse_pas_la_chaine(monkeypatch):
+    """Les filtres natifs doivent rester présents malgré un plugin qui
+    refuse de se charger."""
+    from core import ai_options
+
+    monkeypatch.setattr(ai_options, 'lister_plugins',
+                        lambda: [_info_plugin('casse', 'Cassé')])
+    monkeypatch.setattr(ai_options, 'charger_plugin', lambda i: None)
+
+    filtres = AIOptions.build_filters({'clean_canvas': True},
+                                      plugins_actifs=['casse'])
+
+    assert len(filtres) == 1
+
+
+def test_un_plugin_en_erreur_n_est_pas_charge(monkeypatch):
+    """Un plugin refusé (contrat incompatible) ne doit pas être
+    importé, même s'il figure dans la liste des activés."""
+    from core import ai_options
+
+    appels = []
+    monkeypatch.setattr(
+        ai_options, 'lister_plugins',
+        lambda: [_info_plugin('futur', 'Futur', erreur="contrat 99")])
+    monkeypatch.setattr(ai_options, 'charger_plugin',
+                        lambda i: appels.append(i))
+
+    AIOptions.build_filters({}, plugins_actifs=['futur'])
+
+    assert appels == []
+
+
+def test_un_plugin_qui_n_est_pas_un_filtre_est_ignore(monkeypatch):
+    """Un post-traitement activé ne doit pas se retrouver dans la
+    chaîne temps réel : les contrats ne sont pas interchangeables."""
+    from core import ai_options
+
+    class PasUnFiltre:
+        name = "Intrus"
+
+    monkeypatch.setattr(ai_options, 'lister_plugins',
+                        lambda: [_info_plugin()])
+    monkeypatch.setattr(ai_options, 'charger_plugin',
+                        lambda i: PasUnFiltre())
+
+    filtres = AIOptions.build_filters({}, plugins_actifs=['faux'])
+
+    assert filtres == []
+
+
+def test_sans_plugins_le_comportement_est_inchange():
+    """L'appel historique, sans argument de plugins, doit continuer de
+    fonctionner à l'identique."""
+    filtres = AIOptions.build_filters({'clean_canvas': True})
+
+    assert len(filtres) == 1

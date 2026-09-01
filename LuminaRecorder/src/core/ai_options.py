@@ -17,6 +17,8 @@ où la dépendance était installée sans que cela ait d'effet.
 
 from utils.config_manager import ConfigManager
 from services.ocr_service import ocr_is_available
+from filters.base import FrameFilter
+from plugins.loader import charger_plugin, lister_plugins
 from filters.privacy_blur_filter import PrivacyBlurFilter
 from filters.clean_canvas_filter import CleanCanvasFilter
 from filters.overlay_filter import OverlayFilter
@@ -56,7 +58,7 @@ class AIOptions:
             config.set(section, key, options.get(opt, False))
 
     @staticmethod
-    def build_filters(options: dict) -> list:
+    def build_filters(options: dict, plugins_actifs=None) -> list:
         filters = []
         # Sans moteur OCR, le flou n'a aucune zone à masquer : on n'ajoute
         # pas un filtre inerte, même si le .ini garde la valeur d'une
@@ -67,7 +69,38 @@ class AIOptions:
             filters.append(CleanCanvasFilter())
         if options.get('overlay'):
             filters.append(OverlayFilter())
+
+        # Plugins de l'utilisateur, APRÈS les filtres natifs : ils
+        # travaillent sur une image déjà nettoyée. Un plugin qui refuse
+        # de se charger est simplement absent — jamais une exception,
+        # sinon un fichier tiers défectueux empêcherait d'enregistrer.
+        # Seuls les FrameFilter sont retenus : un post-traitement activé
+        # n'a rien à faire dans la chaîne temps réel.
+        filters.extend(AIOptions._plugins_filtres(plugins_actifs))
         return filters
+
+    @staticmethod
+    def _plugins_filtres(plugins_actifs) -> list:
+        """Instancie les plugins activés qui sont des filtres."""
+        if not plugins_actifs:
+            return []
+
+        try:
+            disponibles = {p.identifiant: p for p in lister_plugins()}
+        except Exception as e:
+            # Un dossier illisible ne doit pas empêcher d'enregistrer
+            print(f"[Lumina] Plugins introuvables : {e}")
+            return []
+
+        retenus = []
+        for identifiant in plugins_actifs:
+            info = disponibles.get(identifiant)
+            if info is None or not info.utilisable:
+                continue
+            instance = charger_plugin(info)
+            if isinstance(instance, FrameFilter):
+                retenus.append(instance)
+        return retenus
 
     @staticmethod
     def parse_max_silence(label: str) -> float:
