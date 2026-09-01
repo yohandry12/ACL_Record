@@ -72,9 +72,14 @@ REM taille se redeballerait entierement a CHAQUE lancement — une minute
 REM d'attente avant la fenetre. Le dossier dist\LuminaRecorder\ part tel
 REM quel dans l'installateur.
 REM
-REM --collect-all easyocr / faster_whisper : leurs fichiers de donnees
-REM (alphabets, configurations) doivent suivre le code, sinon l'import
-REM passe mais l'usage echoue au premier appel.
+REM easyocr et faster_whisper ne sont PLUS embarques : avec PyTorch et
+REM leurs dependances ils pesaient ~700 Mo sur un socle qui en fait 250.
+REM Ils s'installent a la demande depuis le panneau Extensions, dans
+REM %LOCALAPPDATA%\LuminaRecorder\extensions — dossier ajoute au
+REM sys.path au demarrage par enregistrer_chemins_externes().
+REM Les excluer explicitement est necessaire : sans cela PyInstaller les
+REM reaspire par les imports gardes de src\services\ocr_service.py et
+REM src\postprocess\subtitles_processor.py.
 REM transformers et tensorboard restent exclus : rien ne les utilise,
 REM PyInstaller les aspirait par des imports optionnels.
 REM Les --hidden-import de modules standard (wave, audioop...) ne sont pas
@@ -97,8 +102,15 @@ pyinstaller ^
     --add-data "assets;assets" ^
     --add-data "src;src" ^
     --paths "src" ^
-    --collect-all=easyocr ^
-    --collect-all=faster_whisper ^
+    --exclude-module=easyocr ^
+    --exclude-module=faster_whisper ^
+    --exclude-module=torch ^
+    --exclude-module=torchvision ^
+    --exclude-module=ctranslate2 ^
+    --exclude-module=onnxruntime ^
+    --exclude-module=scipy ^
+    --exclude-module=pandas ^
+    --exclude-module=av ^
     --exclude-module=transformers ^
     --exclude-module=tensorboard ^
     --exclude-module=pyarrow ^

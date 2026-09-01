@@ -48,6 +48,14 @@ else:
     src_path = Path(__file__).parent / 'src'
 sys.path.insert(0, str(src_path))
 
+# Les extensions (Whisper, OCR) vivent hors de l'exécutable : rendre
+# leur dossier importable AVANT que quoi que ce soit ne tente de les
+# importer. Un import gardé qui échoue met la fonctionnalité en sommeil
+# pour toute la session — l'ordre compte ici.
+from plugins.loader import enregistrer_chemins_externes
+
+enregistrer_chemins_externes()
+
 from core.window_detect import enable_dpi_awareness
 
 # Doit précéder la création de la fenêtre Tk : Windows refuse tout
