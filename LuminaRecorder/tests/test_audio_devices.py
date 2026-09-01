@@ -195,9 +195,15 @@ def test_actual_fps_measured_at_stop(tmp_path):
     rec = RecorderCore(resolution="160x120", fps=30, audio_enabled=False)
     rec._temp_dir = str(tmp_path)
     rec.is_recording = True
-    rec.start_time = datetime.now() - timedelta(seconds=10)
+    rec.start_time = datetime.now()
     for _ in range(150):                      # 150 frames en 10 s = 15 fps
         rec._write_frame(np.zeros((120, 160, 3), dtype=np.uint8))
+
+    # Antidater APRÈS l'écriture, pas avant : stop_recording mesure
+    # jusqu'à l'instant réel, donc la durée de la boucle s'ajouterait aux
+    # 10 s simulées. Mesuré : sous charge, le fps calculé tombait sous la
+    # borne de 14 et le test échouait au hasard.
+    rec.start_time = datetime.now() - timedelta(seconds=10)
     rec.stop_recording()
 
     assert 14.0 < rec.actual_fps < 16.0       # et non 30
