@@ -85,6 +85,9 @@ REM --collect-submodules=pkg_resources embarque son dossier _vendor
 REM (jaraco, appdirs, pyparsing...) : sans lui, l'exe meurt au demarrage
 REM sur " The 'jaraco.text' package is required " puis chaque dependance
 REM vendored manquante l'une apres l'autre.
+REM pyarrow (76 Mo) n'est importe par aucun de nos modules et n'est
+REM declare par aucune de nos dependances : PyInstaller l'aspirait par
+REM un import optionnel de pandas, lui-meme tire par easyocr.
 pyinstaller ^
     --name "LuminaRecorder" ^
     --windowed ^
@@ -98,6 +101,7 @@ pyinstaller ^
     --collect-all=faster_whisper ^
     --exclude-module=transformers ^
     --exclude-module=tensorboard ^
+    --exclude-module=pyarrow ^
     --hidden-import=psutil ^
     --hidden-import=mss ^
     --hidden-import=cv2 ^
