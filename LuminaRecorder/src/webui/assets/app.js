@@ -615,6 +615,28 @@ function bindCheckbox(id, key, onChange) {
   });
 }
 
+// Previent AVANT l'enregistrement qu'une machine modeste risque de
+// perdre des images. FilterChain desactive deja un filtre trop lent a
+// chaud, mais l'utilisateur decouvre alors le probleme apres coup.
+async function refreshCharge() {
+  const zone = $('charge-warning');
+  if (!zone) return;
+  const options = {};
+  ['privacy_blur', 'clean_canvas', 'overlay'].forEach((key) => {
+    const input = $(key);
+    options[key] = Boolean(input && input.checked);
+  });
+  try {
+    const avis = await call('check_charge', options);
+    const texte = (avis && avis.avertissement) || '';
+    zone.textContent = texte;
+    zone.hidden = !texte;
+  } catch (e) {
+    // Un avis indisponible ne doit rien casser : on se tait
+    zone.hidden = true;
+  }
+}
+
 function bindSelect(id, key) {
   const select = $(id);
   if (!select) return;
@@ -731,7 +753,7 @@ function wire() {
   bindCheckbox('system-audio', 'system_audio');
   bindCheckbox('smart-focus', 'smart_focus');
   ['privacy_blur', 'clean_canvas', 'overlay', 'subtitles', 'magic_cut',
-   'thumbnails'].forEach((key) => bindCheckbox(key, key));
+   'thumbnails'].forEach((key) => bindCheckbox(key, key, refreshCharge));
   bindCheckbox('delete_original', 'delete_original');
   bindCheckbox('summary', 'summary');
   bindCheckbox('subtitle_fix', 'subtitle_fix');

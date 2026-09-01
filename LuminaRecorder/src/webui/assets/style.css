@@ -871,6 +871,20 @@ body[data-state="pending"] .countdown { display: grid; }
 }
 .provider-line .offsite { color: var(--accent); }
 
+/* Avis de charge : un conseil, pas une erreur. Ton ambre plutôt que
+ * rouge — l'enregistrement fonctionnera, il risque seulement de perdre
+ * des images. Le rouge est réservé à ce qui empêche d'enregistrer. */
+.charge-warning {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+  color: var(--text-dim);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
 /* Tâche modale : le voile assombrit ET recule l'arrière-plan, au lieu
  * de simplement le noircir — la hiérarchie se lit dans la profondeur. */
 .modal {

@@ -699,3 +699,83 @@ def test_dossier_de_plugins_illisible_ne_leve_pas(bridge, monkeypatch):
 
     assert resultat['ok'] is False
     assert resultat['plugins'] == []
+
+
+# --- Garde-fou machines peu puissantes ---------------------------------
+
+def test_une_machine_faible_recoit_un_avertissement(bridge):
+    """Activer plusieurs filtres sur une machine modeste dégradera la
+    capture : le dire avant plutôt que de laisser l'utilisateur
+    découvrir un enregistrement saccadé."""
+    bridge.recommended = {'resolution': '1280x720', 'fps': 30,
+                          'bitrate': '2500k', 'profile': 'ENTRY'}
+
+    avis = bridge.check_charge({'privacy_blur': True, 'clean_canvas': True,
+                                'overlay': True})
+
+    assert avis['avertissement']
+
+
+def test_une_machine_puissante_n_est_pas_avertie(bridge):
+    """Un avertissement affiché à tort décrédibilise tous les autres."""
+    bridge.recommended = {'resolution': '1920x1080', 'fps': 60,
+                          'bitrate': '8000k', 'profile': 'PRO'}
+
+    avis = bridge.check_charge({'privacy_blur': True, 'clean_canvas': True,
+                                'overlay': True})
+
+    assert avis['avertissement'] == ""
+
+
+def test_un_seul_filtre_ne_declenche_pas_l_avertissement(bridge):
+    bridge.recommended = {'profile': 'ENTRY'}
+
+    avis = bridge.check_charge({'privacy_blur': True})
+
+    assert avis['avertissement'] == ""
+
+
+def test_le_profil_est_lu_sous_la_cle_reelle(bridge):
+    """SystemAnalyzer expose « profile », pas « profil ».
+
+    Une faute de frappe ici rendrait le garde-fou muet en permanence,
+    sans qu'aucune erreur ne le signale.
+    """
+    from core.system_analyzer import SystemAnalyzer
+
+    reglages = SystemAnalyzer().get_recommended_settings()
+
+    assert 'profile' in reglages
+    bridge.recommended = dict(reglages, profile='ENTRY')
+    avis = bridge.check_charge({'privacy_blur': True, 'overlay': True})
+    assert avis['avertissement']
+
+
+def test_profil_inconnu_n_avertit_pas(bridge):
+    """L'analyse matérielle peut échouer : le repli ne pose aucun profil.
+
+    Sans profil connu, on ne peut rien affirmer sur la machine — mieux
+    vaut se taire que d'alarmer à tort.
+    """
+    bridge.recommended = {'resolution': '1280x720', 'fps': 30,
+                          'bitrate': '2500k'}
+
+    avis = bridge.check_charge({'privacy_blur': True, 'clean_canvas': True,
+                                'overlay': True})
+
+    assert avis['avertissement'] == ""
+
+
+def test_les_plugins_actifs_comptent_dans_la_charge(bridge, monkeypatch):
+    """Un plugin tiers coûte autant qu'un filtre natif.
+
+    Ne compter que les filtres natifs sous-estimerait la charge d'un
+    utilisateur qui a activé plusieurs plugins.
+    """
+    bridge.recommended = {'profile': 'ENTRY'}
+    monkeypatch.setattr(bridge, '_plugins_actifs',
+                        lambda: ['filigrane', 'horodatage'])
+
+    avis = bridge.check_charge({'privacy_blur': True})
+
+    assert avis['avertissement']

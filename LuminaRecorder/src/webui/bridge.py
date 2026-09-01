@@ -873,6 +873,45 @@ class LuminaBridge:
         brut = self.config.get('plugins', 'actifs', fallback='') or ''
         return [x.strip() for x in str(brut).split(',') if x.strip()]
 
+    # Filtres natifs qui coûtent réellement du temps par image. L'overlay
+    # dessine, le flou analyse, le nettoyage recompose : les trois
+    # s'additionnent sur le budget de 33 ms à 30 im/s.
+    FILTRES_COUTEUX = ('privacy_blur', 'clean_canvas', 'overlay')
+
+    def check_charge(self, options: dict) -> dict:
+        """Prévient si les options choisies dépassent la machine.
+
+        Le garde-fou de FilterChain désactive déjà à chaud un filtre trop
+        lent ; cet avis arrive avant, pour que l'utilisateur décide
+        plutôt que de subir.
+
+        Deux pièges évités ici :
+
+        - la clé est « profile » (SystemAnalyzer.get_recommended_settings),
+          pas « profil » : une faute de frappe rendrait ce garde-fou muet
+          en permanence, sans qu'aucune erreur ne le signale ;
+        - un profil absent ne déclenche rien. L'analyse matérielle peut
+          échouer, et son repli ne pose aucun profil : on ne peut alors
+          rien affirmer sur la machine, et un avertissement affiché à
+          tort décrédibiliserait tous les autres.
+        """
+        profil = str(self.recommended.get('profile', '')).lower()
+        couteux = sum(1 for cle in self.FILTRES_COUTEUX if options.get(cle))
+
+        # Un plugin tiers coûte autant qu'un filtre natif : ne compter
+        # que les nôtres sous-estimerait la charge réelle
+        try:
+            couteux += len(self._plugins_actifs())
+        except Exception:
+            pass
+
+        if profil in ('entry', 'faible') and couteux >= 2:
+            return {'avertissement':
+                    "Cette machine risque de perdre des images avec "
+                    "plusieurs filtres actifs. Lumina en désactivera "
+                    "automatiquement si la capture ralentit."}
+        return {'avertissement': ""}
+
     def set_plugin_actif(self, identifiant: str, actif: bool) -> dict:
         """Active ou désactive un plugin.
 
