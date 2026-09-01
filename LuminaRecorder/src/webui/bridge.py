@@ -873,6 +873,47 @@ class LuminaBridge:
         brut = self.config.get('plugins', 'actifs', fallback='') or ''
         return [x.strip() for x in str(brut).split(',') if x.strip()]
 
+    def get_extensions(self) -> dict:
+        """Catalogue des extensions officielles et leur état.
+
+        Sert au panneau Extensions à proposer l'installation de ce qui
+        manque. C'est le recours d'un utilisateur venu d'une version où
+        l'IA était embarquée : sans cela, sa fonctionnalité disparaît
+        derrière une case grisée, sans explication ni moyen d'agir.
+        """
+        try:
+            from services.extension_installer import EXTENSIONS, est_installee
+            return {
+                'ok': True,
+                'extensions': [{
+                    'cle': cle,
+                    'nom': ext['nom'],
+                    'description': ext['description'],
+                    'taille_mo': ext['taille_mo'],
+                    'installee': est_installee(cle),
+                } for cle, ext in EXTENSIONS.items()],
+            }
+        except Exception as e:
+            print(f"[Lumina] Catalogue d'extensions indisponible : {e}")
+            return {'ok': False, 'extensions': [], 'error': str(e)}
+
+    def install_extension(self, cle: str) -> dict:
+        """Installe une extension, en rapportant la progression.
+
+        Aucune exception ne remonte : l'interface web n'a aucun moyen
+        d'en afficher une utilement.
+        """
+        try:
+            from services.extension_installer import installer_extension
+            resultat = installer_extension(
+                cle, progress_cb=lambda p: self.emit(
+                    'extension_progress', {'cle': cle, 'progress': p}))
+            if resultat.get('ok'):
+                self.emit('extension_installed', {'cle': cle})
+            return resultat
+        except Exception as e:
+            return {'ok': False, 'error': f"Installation impossible : {e}"}
+
     # Filtres natifs qui coûtent réellement du temps par image. L'overlay
     # dessine, le flou analyse, le nettoyage recompose : les trois
     # s'additionnent sur le budget de 33 ms à 30 im/s.

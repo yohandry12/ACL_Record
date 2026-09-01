@@ -779,3 +779,44 @@ def test_les_plugins_actifs_comptent_dans_la_charge(bridge, monkeypatch):
     avis = bridge.check_charge({'privacy_blur': True})
 
     assert avis['avertissement']
+
+
+# --- Extensions installables -------------------------------------------
+
+def test_le_pont_expose_le_catalogue_des_extensions(bridge):
+    """Le panneau doit pouvoir proposer l'installation.
+
+    Sans cela, un utilisateur venant de 1.3.0 voit sa fonctionnalité
+    disparaître derrière une case grisée, sans recours.
+    """
+    resultat = bridge.get_extensions()
+
+    assert resultat['ok'] is True
+    cles = {e['cle'] for e in resultat['extensions']}
+    assert {'sous_titres', 'ocr'} <= cles
+    for ext in resultat['extensions']:
+        assert ext['nom']
+        assert ext['taille_mo'] > 0
+        assert 'installee' in ext
+
+
+def test_une_extension_inconnue_est_refusee_par_le_pont(bridge):
+    resultat = bridge.install_extension('nimporte_quoi')
+
+    assert resultat['ok'] is False
+    assert resultat['error']
+
+
+def test_l_echec_d_installation_ne_leve_pas(bridge, monkeypatch):
+    """Une exception ici remonterait jusqu'à l'interface web."""
+    import services.extension_installer as ei
+
+    def explose(*a, **k):
+        raise RuntimeError("disque plein")
+
+    monkeypatch.setattr(ei, 'installer_extension', explose)
+
+    resultat = bridge.install_extension('sous_titres')
+
+    assert resultat['ok'] is False
+    assert resultat['error']
