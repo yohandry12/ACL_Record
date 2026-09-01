@@ -48,11 +48,12 @@ const DEFAULTS = {
   interactionRadius: 1.5,
   interactionStrength: 0.5,
   rippleIntensity: 1,
-  // Le fond n'est plus un motif regarde pour lui-meme : c'est la
-  // matiere que les surfaces translucides floutent. Il doit se lire
-  // comme une texture derriere le verre, pas comme un decor qui
-  // rivalise avec le contenu.
-  opacity: 0.3,
+  // Le fond est la matiere que les surfaces translucides floutent.
+  // MESURE : a 0.3, le canvas peignait une moyenne de 3.3/255 — un
+  // flou n'a rien a flouter sur du noir, et tout le travail de
+  // materiaux devenait invisible. Il faut de la LUMIERE derriere le
+  // verre pour que le verre se voie.
+  opacity: 0.85,
 };
 
 // Plafond de particules : au-delà, le coût de dessin devient perceptible

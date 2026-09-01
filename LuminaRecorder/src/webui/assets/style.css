@@ -91,7 +91,7 @@
   --mat-thin: saturate(140%) blur(10px);    /* champs, puces */
 
   /* Bord supérieur clair : la lumière qui accroche le matériau */
-  --edge-light: rgba(255, 255, 255, 0.08);
+  --edge-light: rgba(255, 255, 255, 0.14);
 
   /* Ombres douces multi-couches, jamais une ombre unique et dure */
   --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.24),
@@ -111,7 +111,6 @@
 
 html, body {
   height: 100%;
-  background: var(--bg-base);
   color: var(--text);
   font-family: var(--font);
   font-size: 13px;
@@ -121,9 +120,29 @@ html, body {
   -webkit-user-select: none;
 }
 
+/* Le fond n'est pas un aplat : c'est une SOURCE LUMINEUSE.
+ *
+ * Sans lumière derrière lui, un matériau translucide ne se voit pas —
+ * mesuré : sur un fond quasi noir (3,3/255), le flou n'avait
+ * strictement rien à flouter et tout le travail de matériaux restait
+ * invisible. Deux halos chauds, décentrés et de tailles différentes,
+ * donnent au verre quelque chose à capter et créent la variation de
+ * luminosité qui révèle les surfaces posées dessus. */
 body {
   display: flex;
   flex-direction: column;
+  background:
+    radial-gradient(90% 70% at 18% 8%,
+      oklch(38% 0.09 62 / 0.5) 0%,
+      transparent 62%),
+    radial-gradient(70% 60% at 88% 92%,
+      oklch(34% 0.075 28 / 0.42) 0%,
+      transparent 58%),
+    radial-gradient(120% 100% at 50% 50%,
+      oklch(26% 0.02 250 / 0.5) 0%,
+      transparent 70%),
+    var(--bg-base);
+  background-attachment: fixed;
 }
 
 /* ---------- Fond animé ---------- */
@@ -159,7 +178,7 @@ body.compact .backdrop { display: none; }
   display: flex;
   align-items: center;
   padding: 0 6px 0 14px;
-  background: rgba(26, 28, 32, 0.72);
+  background: rgba(24, 26, 31, 0.55);
   backdrop-filter: var(--mat-thick);
   -webkit-backdrop-filter: var(--mat-thick);
   border-bottom: 1px solid rgba(0, 0, 0, 0.4);
@@ -430,7 +449,7 @@ body[data-state="recording"] .timer { color: var(--text); }
  * assez pour détacher la colonne du fond. Le bord clair en haut et
  * l'ombre douce en dessous donnent l'épaisseur. */
 .panel {
-  background: rgba(26, 28, 32, 0.66);
+  background: rgba(24, 26, 31, 0.46);
   backdrop-filter: var(--mat-medium);
   -webkit-backdrop-filter: var(--mat-medium);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -879,7 +898,7 @@ body[data-state="pending"] .countdown { display: grid; }
   gap: 13px;
   /* Matériau épais : la boîte est une surface structurante posée
    * au-dessus de tout le reste */
-  background: rgba(26, 28, 32, 0.82);
+  background: rgba(24, 26, 31, 0.66);
   backdrop-filter: var(--mat-thick);
   -webkit-backdrop-filter: var(--mat-thick);
   border: 1px solid rgba(255, 255, 255, 0.08);
