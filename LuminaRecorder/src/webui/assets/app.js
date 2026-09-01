@@ -244,6 +244,86 @@ function onUpdateError(message) {
   $('update-status').textContent = message;
 }
 
+
+/* ---------- Extensions et plugins ----------
+ *
+ * La liste est construite en creant des noeuds, jamais par innerHTML
+ * avec du texte de plugin : un nom de plugin est du contenu tiers, il
+ * ne doit pas pouvoir injecter du balisage dans l'interface.
+ */
+
+async function openPluginsModal() {
+  await renderPlugins();
+  ancrerModale('plugins-modal', 'open-plugins');
+}
+
+function closePluginsModal() {
+  $('plugins-modal').hidden = true;
+}
+
+async function renderPlugins() {
+  const data = await call('get_plugins');
+  const liste = $('plugin-list');
+  liste.textContent = '';
+  $('plugins-status').textContent = '';
+
+  if (!data || !data.ok) {
+    const vide = document.createElement('p');
+    vide.className = 'plugin-vide';
+    vide.textContent = (data && data.error)
+      ? 'Dossier des plugins illisible : ' + data.error
+      : 'Impossible de lire les plugins';
+    liste.append(vide);
+    return;
+  }
+
+  if (!data.plugins.length) {
+    const vide = document.createElement('p');
+    vide.className = 'plugin-vide';
+    vide.textContent = 'Aucun plugin installé. Déposez un fichier .py '
+      + 'dans le dossier des plugins.';
+    liste.append(vide);
+    return;
+  }
+
+  for (const p of data.plugins) {
+    const ligne = document.createElement('div');
+    ligne.className = 'plugin-item' + (p.erreur ? ' plugin-erreur' : '');
+
+    const info = document.createElement('div');
+    info.className = 'plugin-info';
+
+    const titre = document.createElement('div');
+    titre.className = 'plugin-nom';
+    titre.textContent = p.nom;
+
+    const detail = document.createElement('div');
+    detail.className = 'plugin-detail';
+    detail.textContent = p.erreur
+      ? p.erreur
+      : (p.description || 'Aucune description')
+        + ' · ' + p.auteur + ' · v' + p.version;
+
+    info.append(titre, detail);
+    ligne.append(info);
+
+    if (!p.erreur) {
+      const inter = document.createElement('input');
+      inter.type = 'checkbox';
+      inter.checked = p.actif;
+      inter.setAttribute('aria-label', 'Activer ' + p.nom);
+      inter.addEventListener('change', async () => {
+        await call('set_plugin_actif', p.identifiant, inter.checked);
+        $('plugins-status').textContent =
+          'Prend effet au prochain enregistrement';
+      });
+      ligne.append(inter);
+    }
+
+    liste.append(ligne);
+  }
+}
+
 /* ---------- Forme d'onde du widget ----------
  *
  * IMPORTANT : ce trace ne mesure PAS le niveau du microphone. Le moteur
@@ -656,6 +736,14 @@ function wire() {
   bindCheckbox('summary', 'summary');
   bindCheckbox('subtitle_fix', 'subtitle_fix');
 
+  $('open-plugins').addEventListener('click', openPluginsModal);
+  $('plugins-close').addEventListener('click', closePluginsModal);
+  $('plugins-folder').addEventListener('click',
+    () => call('open_plugins_folder'));
+  $('plugins-modal').addEventListener('click', (event) => {
+    if (event.target === $('plugins-modal')) closePluginsModal();
+  });
+
   $('version-tag').addEventListener('click', openUpdateModal);
   $('update-close').addEventListener('click', closeUpdateModal);
   $('update-later').addEventListener('click', closeUpdateModal);
@@ -693,6 +781,10 @@ function wire() {
     }
     if (event.key === 'Escape' && !$('update-modal').hidden) {
       closeUpdateModal();
+      return;
+    }
+    if (event.key === 'Escape' && !$('plugins-modal').hidden) {
+      closePluginsModal();
       return;
     }
     if (event.key === 'Escape' && state === 'recording') {

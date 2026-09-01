@@ -619,3 +619,83 @@ def test_avec_moteur_les_traitements_ia_sont_presents():
     assert noms[0] == 'SubtitlesProcessor'
     assert 'SummaryProcessor' in noms
     assert 'SubtitleFixProcessor' in noms
+
+
+# --- Plugins ---
+
+def _info(identifiant="filigrane", nom="Filigrane", erreur=""):
+    from plugins.loader import PluginInfo
+    return PluginInfo(nom=nom, description="Logo", auteur="moi",
+                      version="1.0", api=1, chemin=f"{identifiant}.py",
+                      identifiant=identifiant, erreur=erreur)
+
+
+def test_le_pont_liste_les_plugins(bridge, monkeypatch):
+    from webui import bridge as pont
+    monkeypatch.setattr(pont, 'lister_plugins', lambda: [_info()])
+
+    liste = bridge.get_plugins()
+
+    assert liste['ok'] is True
+    assert liste['plugins'][0]['nom'] == "Filigrane"
+    assert liste['plugins'][0]['actif'] is False
+
+
+def test_activer_un_plugin_le_memorise(bridge, monkeypatch):
+    from webui import bridge as pont
+    monkeypatch.setattr(pont, 'lister_plugins', lambda: [_info()])
+
+    bridge.set_plugin_actif('filigrane', True)
+
+    assert bridge.get_plugins()['plugins'][0]['actif'] is True
+
+
+def test_desactiver_un_plugin(bridge, monkeypatch):
+    from webui import bridge as pont
+    monkeypatch.setattr(pont, 'lister_plugins', lambda: [_info()])
+    bridge.set_plugin_actif('filigrane', True)
+
+    bridge.set_plugin_actif('filigrane', False)
+
+    assert bridge.get_plugins()['plugins'][0]['actif'] is False
+
+
+def test_un_plugin_en_erreur_reste_visible(bridge, monkeypatch):
+    """Un plugin refusé doit apparaître AVEC sa raison : disparaître
+    sans explication laisserait l'utilisateur sans recours."""
+    from webui import bridge as pont
+    monkeypatch.setattr(
+        pont, 'lister_plugins',
+        lambda: [_info('futur', 'Futur', erreur="Version plus récente")])
+
+    p = bridge.get_plugins()['plugins'][0]
+
+    assert p['erreur']
+    assert p['actif'] is False
+
+
+def test_un_plugin_en_erreur_ne_devient_jamais_actif(bridge, monkeypatch):
+    """Même activé dans la configuration, un plugin refusé reste
+    inactif."""
+    from webui import bridge as pont
+    monkeypatch.setattr(
+        pont, 'lister_plugins',
+        lambda: [_info('futur', 'Futur', erreur="Version plus récente")])
+    bridge.set_plugin_actif('futur', True)
+
+    assert bridge.get_plugins()['plugins'][0]['actif'] is False
+
+
+def test_dossier_de_plugins_illisible_ne_leve_pas(bridge, monkeypatch):
+    """L'interface doit s'ouvrir même si le dossier pose problème."""
+    from webui import bridge as pont
+
+    def casse():
+        raise OSError("dossier inaccessible")
+
+    monkeypatch.setattr(pont, 'lister_plugins', casse)
+
+    resultat = bridge.get_plugins()
+
+    assert resultat['ok'] is False
+    assert resultat['plugins'] == []

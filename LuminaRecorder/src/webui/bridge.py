@@ -45,6 +45,7 @@ from services.ai_credentials import (providers_status, set_api_key,
 from services.ai_provider import (DEFAULT_PROVIDER, build_engine,
                                   build_engine_from_config,
                                   sends_data_offsite)
+from plugins.loader import lister_plugins, plugins_dir
 from services.ocr_service import ocr_is_available
 from services.update_checker import check_for_update, download_setup
 from utils.config_manager import ConfigManager
@@ -613,7 +614,8 @@ class LuminaBridge:
                 audio_gain=self.config.get_float('recording', 'audio_gain',
                                                  fallback=0.5),
                 audio_device_index=self._selected_device_index(),
-                filters=AIOptions.build_filters(options),
+                filters=AIOptions.build_filters(
+                    options, plugins_actifs=self._plugins_actifs()),
                 on_filter_disabled=lambda n: self.emit(
                     'notice', f"Filtre « {n} » désactivé (trop lent)"),
                 on_capture_error=lambda m: self.emit('error', m),
@@ -832,6 +834,75 @@ class LuminaBridge:
             self.toggle_recording()
         except Exception as e:
             print(f"[Lumina] Raccourci : {e}")
+
+    # ------------------------------------------------------------------
+    # Plugins
+    # ------------------------------------------------------------------
+
+    def get_plugins(self) -> dict:
+        """Liste les plugins installés, avec leur état d'activation.
+
+        Aucun code de plugin n'est exécuté ici : les métadonnées sont
+        lues par analyse syntaxique du fichier.
+        """
+        actifs = self._plugins_actifs()
+        try:
+            trouves = lister_plugins()
+        except Exception as e:
+            # L'interface doit s'ouvrir même si le dossier pose problème
+            return {'ok': False, 'error': str(e), 'plugins': []}
+
+        return {
+            'ok': True,
+            'dossier': str(plugins_dir()),
+            'plugins': [{
+                'identifiant': p.identifiant,
+                'nom': p.nom,
+                'description': p.description,
+                'auteur': p.auteur,
+                'version': p.version,
+                'erreur': p.erreur,
+                # Un plugin refusé n'est jamais annoncé actif, même si
+                # la configuration le liste : il ne sera pas chargé
+                'actif': p.identifiant in actifs and p.utilisable,
+            } for p in trouves],
+        }
+
+    def _plugins_actifs(self) -> list:
+        """Identifiants des plugins activés, lus dans la configuration."""
+        brut = self.config.get('plugins', 'actifs', fallback='') or ''
+        return [x.strip() for x in str(brut).split(',') if x.strip()]
+
+    def set_plugin_actif(self, identifiant: str, actif: bool) -> dict:
+        """Active ou désactive un plugin.
+
+        Prend effet au prochain enregistrement : changer la chaîne de
+        filtres pendant une capture en cours la ferait vaciller.
+        """
+        actifs = self._plugins_actifs()
+        if actif and identifiant not in actifs:
+            actifs.append(identifiant)
+        elif not actif and identifiant in actifs:
+            actifs.remove(identifiant)
+
+        self.config.set('plugins', 'actifs', ','.join(actifs))
+        try:
+            self.config.save()
+        except Exception:
+            # FakeConfig des tests n'a pas de save() ; en production un
+            # échec d'écriture ne doit pas casser l'interface
+            pass
+        return {'ok': True}
+
+    def open_plugins_folder(self) -> dict:
+        """Ouvre le dossier des plugins dans l'explorateur."""
+        dossier = plugins_dir()
+        try:
+            dossier.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(dossier))
+            return {'ok': True}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
 
     # ------------------------------------------------------------------
     # Mise à jour automatique

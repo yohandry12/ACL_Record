@@ -47,6 +47,7 @@
   <div class="titlebar-spacer"></div>
   <!-- Version : simple mention en temps normal, pastille de mise à
        jour cliquable quand une release plus récente est publiée -->
+  <button class="titlebar-action" id="open-plugins" title="Extensions et plugins">Extensions</button>
   <button class="version-tag" id="version-tag" title="Version installée">v—</button>
   <span class="profile-tag" id="profile">—</span>
 </header>
@@ -302,6 +303,28 @@
       <button class="btn-primary" id="update-install">
         Installer <span id="update-size"></span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- Extensions et plugins -->
+<div class="modal" id="plugins-modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Extensions</h3>
+      <button class="modal-close" id="plugins-close" aria-label="Fermer">&#10005;</button>
+    </div>
+
+    <p class="modal-note">Les plugins ajoutent des fonctions à Lumina.
+      Ils s'exécutent avec les droits de l'application et voient l'image
+      de votre écran : n'activez que ceux dont vous connaissez
+      l'origine.</p>
+
+    <div class="plugin-list" id="plugin-list"></div>
+
+    <div class="modal-actions">
+      <span class="modal-status" id="plugins-status"></span>
+      <button class="btn-sub" id="plugins-folder">Ouvrir le dossier</button>
     </div>
   </div>
 </div>
