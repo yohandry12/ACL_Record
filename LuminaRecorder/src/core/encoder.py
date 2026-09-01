@@ -100,17 +100,29 @@ class VideoEncoder:
                 # avant l'autre (le loopback ne délivre rien dans le silence)
                 # amix divise CHAQUE entrée par le nombre d'entrées :
                 # sans normalize=0, le micro sortait à -6 dB, inaudible
-                # sous la bande-son d'une vidéo. On garde donc les
-                # niveaux tels quels et on privilégie la voix, qui est
-                # le propos de l'enregistrement : le son système passe
-                # en fond à 65 %. dropout_transition=0 empêche amix de
-                # remonter le gain quand une source se tait — sinon le
-                # système enflerait pendant les silences du micro.
+                # sous la bande-son d'une vidéo.
+                #
+                # Mesuré sur un enregistrement réel : la bande vocale
+                # (300-3400 Hz) sortait 2,3 dB SOUS le reste — la voix
+                # était couverte. La voix est le propos d'un
+                # enregistrement commenté : elle est donc remontée
+                # (+3,5 dB) et le son système nettement reculé (35 %,
+                # soit -9 dB), ce qui laisse ~12 dB d'écart en faveur de
+                # la voix — la marge habituelle d'un commentaire
+                # audible sur fond musical.
+                #
+                # dynaudnorm sur la voix égalise les écarts de distance
+                # au micro sans écraser la dynamique (f=250 ms, g=5) :
+                # une phrase prononcée en s'éloignant reste audible.
+                # alimiter en sortie empêche la somme des deux sources
+                # de saturer.
                 '-filter_complex',
-                f'[1:a]volume={audio_gain}[mic];'
-                f'[2:a]volume={audio_gain * 0.65}[sys];'
+                f'[1:a]volume={audio_gain * 1.5},'
+                f'dynaudnorm=f=250:g=5:p=0.9[mic];'
+                f'[2:a]volume={audio_gain * 0.35}[sys];'
                 f'[mic][sys]amix=inputs=2:duration=longest'
-                f':normalize=0:dropout_transition=0[aout]',
+                f':normalize=0:dropout_transition=0,'
+                f'alimiter=limit=0.95[aout]',
                 '-map', '0:v',
                 '-map', '[aout]',
                 '-c:a', 'aac',

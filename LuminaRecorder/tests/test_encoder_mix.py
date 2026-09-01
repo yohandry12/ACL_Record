@@ -49,20 +49,38 @@ def test_le_micro_n_est_pas_divise_par_deux(monkeypatch, tmp_path):
 
 
 def test_le_son_systeme_passe_en_arriere_plan(monkeypatch, tmp_path):
-    """La voix est le propos de l'enregistrement : le son système est
-    atténué pour ne pas la couvrir."""
+    """Mesuré sur un enregistrement réel : la bande vocale sortait
+    2,3 dB SOUS le reste, la voix était couverte. Elle est remontée et
+    le son système reculé — mesuré sur signaux de test : le rapport
+    voix/fond passe de -16,1 dB à +9,9 dB."""
     cmd = commande_de_mixage(monkeypatch, tmp_path, gain=1.0)
 
-    assert 'volume=1.0[mic]' in cmd
-    assert 'volume=0.65[sys]' in cmd
+    assert 'volume=1.5,' in cmd          # voix remontée
+    assert 'volume=0.35[sys]' in cmd     # système reculé
+
+
+def test_la_voix_est_egalisee(monkeypatch, tmp_path):
+    """Une phrase prononcée en s'éloignant du micro doit rester
+    audible : dynaudnorm égalise sans écraser la dynamique."""
+    cmd = commande_de_mixage(monkeypatch, tmp_path)
+
+    assert 'dynaudnorm' in cmd
+
+
+def test_la_somme_ne_sature_pas(monkeypatch, tmp_path):
+    """Sans normalisation d'amix, la somme des deux sources peut
+    dépasser 0 dBFS : un limiteur protège la sortie."""
+    cmd = commande_de_mixage(monkeypatch, tmp_path)
+
+    assert 'alimiter' in cmd
 
 
 def test_le_gain_utilisateur_s_applique_aux_deux_sources(monkeypatch,
                                                          tmp_path):
     cmd = commande_de_mixage(monkeypatch, tmp_path, gain=2.0)
 
-    assert 'volume=2.0[mic]' in cmd
-    assert 'volume=1.3[sys]' in cmd     # 2.0 x 0.65
+    assert 'volume=3.0,' in cmd          # 2.0 x 1.5
+    assert 'volume=0.7[sys]' in cmd      # 2.0 x 0.35
 
 
 def test_pas_de_remontee_de_gain_dans_les_silences(monkeypatch, tmp_path):

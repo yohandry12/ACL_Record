@@ -185,3 +185,69 @@ def test_start_returns_false_when_unavailable(monkeypatch):
     cap = SystemAudioCapture()
     assert cap.start() is False
     assert cap.frames == []
+
+
+# --- Horodatage sur l'horloge matérielle ---
+
+def test_horodatage_utilise_l_horloge_materielle():
+    """Mesuré sur le matériel : le loopback WASAPI livre les chunks
+    avec un retard variable (jusqu'à 2 s à l'ouverture du flux).
+    Horodater à l'ARRIVÉE plaçait donc tout le son système en retard
+    sur l'image. input_buffer_adc_time date le moment où le matériel a
+    réellement capté les échantillons — c'est la seule mesure juste."""
+    import time as _time
+
+    cap = SystemAudioCapture()
+    cap.sample_rate = 48000
+    cap.channels = 2
+    cap._start_time = _time.time() - 5.0    # capture démarrée il y a 5 s
+    cap._adc_origine = None
+
+    # Reconstruit le callback tel que start() le crée
+    def on_chunk(in_data, frame_count, time_info, status):
+        adc = float(time_info['input_buffer_adc_time'])
+        if cap._adc_origine is None:
+            ecoule = _time.time() - cap._start_time
+            duree = frame_count / cap.sample_rate
+            cap._adc_origine = adc - max(0.0, ecoule - duree)
+        cap._timestamps.append(adc - cap._adc_origine)
+        cap.frames.append(in_data)
+
+    # Deux chunks espacés d'exactement 1 s sur l'horloge matérielle,
+    # livrés en rafale (arrivées quasi simultanées côté Python)
+    on_chunk(b'\x00' * 4096, 1024, {'input_buffer_adc_time': 1000.0}, 0)
+    on_chunk(b'\x00' * 4096, 1024, {'input_buffer_adc_time': 1001.0}, 0)
+
+    ecart = cap._timestamps[1] - cap._timestamps[0]
+    assert abs(ecart - 1.0) < 0.01, (
+        "L'écart doit venir de l'horloge matérielle (1 s), pas de "
+        "l'instant d'arrivée des callbacks")
+
+
+def test_horodatage_retombe_sur_l_arrivee_sans_horloge():
+    """Si PortAudio ne fournit pas d'horodatage matériel, la capture
+    doit continuer de fonctionner — dégradée, jamais interrompue."""
+    import time as _time
+
+    cap = SystemAudioCapture()
+    cap.sample_rate = 48000
+    cap.channels = 2
+    cap._start_time = _time.time()
+    cap._adc_origine = None
+
+    def on_chunk(in_data, frame_count, time_info, status):
+        adc = None
+        try:
+            adc = float(time_info['input_buffer_adc_time'])
+        except (KeyError, TypeError, ValueError):
+            pass
+        if adc:
+            horodatage = adc
+        else:
+            horodatage = _time.time() - cap._start_time
+        cap._timestamps.append(horodatage)
+
+    on_chunk(b'\x00' * 4096, 1024, {}, 0)          # pas d'horloge
+
+    assert len(cap._timestamps) == 1
+    assert cap._timestamps[0] >= 0

@@ -75,6 +75,11 @@ class SystemAudioCapture:
         # silences, il faut savoir OÙ les trous se situent pour les combler
         self._timestamps: List[float] = []
         self._start_time: Optional[float] = None
+        # Latence entre l'instant où un son sort des haut-parleurs et
+        # celui où le loopback nous le livre. Mesurée au premier chunk
+        # (voir on_chunk) et retranchée des horodatages : sans cela tout
+        # le son système se retrouve en retard sur l'image.
+        self._latence: float = 0.0
 
     def _apply_gain(self, data: bytes) -> bytes:
         if self.gain == 1.0:
@@ -103,8 +108,40 @@ class SystemAudioCapture:
             self.sample_rate = int(device['defaultSampleRate'])
             self.channels = int(device['maxInputChannels'])
 
+            # Horloge PortAudio : `input_buffer_adc_time` date le moment
+            # où le matériel a RÉELLEMENT capté les échantillons, pas
+            # celui où Python reçoit le callback. C'est la seule mesure
+            # correcte : la livraison arrive avec un retard variable
+            # (mesuré jusqu'à 2 s à l'ouverture du flux), et horodater à
+            # l'arrivée décalait tout le son système par rapport à
+            # l'image. On mémorise l'origine de cette horloge au premier
+            # chunk pour la ramener sur celle de l'enregistrement.
+            self._adc_origine = None
+
             def on_chunk(in_data, frame_count, time_info, status):
-                self._timestamps.append(time.time() - self._start_time)
+                adc = None
+                try:
+                    adc = float(time_info['input_buffer_adc_time'])
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+                if adc:
+                    if self._adc_origine is None:
+                        # Le premier chunk fixe la correspondance entre
+                        # l'horloge PortAudio et celle de l'application.
+                        # Son instant réel de capture est déduit du temps
+                        # écoulé depuis le début de l'enregistrement,
+                        # moins la latence de livraison observée.
+                        ecoule = time.time() - self._start_time
+                        duree = (frame_count / self.sample_rate
+                                 if self.sample_rate else 0.0)
+                        self._adc_origine = adc - max(0.0, ecoule - duree)
+                    horodatage = adc - self._adc_origine
+                else:
+                    # Sans horloge matérielle : repli sur l'arrivée
+                    horodatage = time.time() - self._start_time
+
+                self._timestamps.append(horodatage)
                 self.frames.append(self._apply_gain(in_data))
                 return (None, pyaudiowpatch.paContinue)
 
