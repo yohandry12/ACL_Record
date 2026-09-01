@@ -73,14 +73,61 @@ def test_list_input_devices_terminates_pyaudio(monkeypatch):
 
 
 def test_device_names_are_decoded(monkeypatch):
-    """Les noms PortAudio arrivent en UTF-8 lu comme du latin-1."""
+    """Les noms PortAudio arrivent en UTF-8 lu comme du latin-1.
+
+    Le suffixe technique du pilote est retiré au passage : il ne dit
+    rien à l'utilisateur et c'est lui qui rendait trois entrées
+    visuellement indiscernables dans la liste."""
     class MojibakePyAudio(FakePyAudio):
         DEVICES = [{'name': 'RÃ©seau de microphones (Realtek Audio)',
                     'maxInputChannels': 2, 'defaultSampleRate': 44100.0}]
 
     monkeypatch.setattr(recorder_core.pyaudio, 'PyAudio', MojibakePyAudio)
-    assert list_input_devices()[0].name == \
-        'Réseau de microphones (Realtek Audio)'
+    assert list_input_devices()[0].name == 'Réseau de microphones'
+
+
+# --- Lisibilité et dédoublonnage de la liste ---
+
+def test_nom_de_pilote_windows_devient_lisible():
+    """Constaté sur la machine : Windows expose « Input
+    (@System32\\drivers\\bthhfenum.sys,#4;%1 Hands-Free HF Audio%0
+    ;(iPhone)) ». Seul « iPhone » intéresse l'utilisateur."""
+    brut = ('Input (@System32\\drivers\\bthhfenum.sys,#4;'
+            '%1 Hands-Free HF Audio%0 ;(iPhone))')
+
+    assert recorder_core.clean_device_name(brut) == 'iPhone'
+
+
+def test_nom_tronque_par_mme_est_reparé():
+    """L'API MME coupe les noms à 31 caractères, laissant une
+    parenthèse jamais refermée : « Réseau de microphones (Realtek »."""
+    assert recorder_core.clean_device_name(
+        'Réseau de microphones (Realtek') == 'Réseau de microphones'
+
+
+def test_parentheses_vides_retirees():
+    assert recorder_core.clean_device_name('Ligne ()') == 'Ligne'
+
+
+def test_le_meme_micro_n_apparait_qu_une_fois(monkeypatch):
+    """PortAudio expose la même carte via MME, WASAPI et DirectSound :
+    la liste brute contenait trois entrées identiques à l'écran."""
+    class DoublonsPyAudio(FakePyAudio):
+        DEVICES = [
+            {'name': 'Réseau de microphones (Realtek',
+             'maxInputChannels': 2, 'defaultSampleRate': 44100.0},
+            {'name': 'Réseau de microphones (Realtek Audio)',
+             'maxInputChannels': 2, 'defaultSampleRate': 44100.0},
+            {'name': 'Réseau de microphones (Realtek HD Audio Mic Array input)',
+             'maxInputChannels': 2, 'defaultSampleRate': 44100.0},
+            {'name': 'FrontMic (Realtek HD Audio Front Mic input)',
+             'maxInputChannels': 2, 'defaultSampleRate': 44100.0},
+        ]
+
+    monkeypatch.setattr(recorder_core.pyaudio, 'PyAudio', DoublonsPyAudio)
+    noms = [d.name for d in list_input_devices()]
+
+    assert noms == ['Réseau de microphones', 'FrontMic']
 
 
 def test_recorder_stores_audio_device_index():

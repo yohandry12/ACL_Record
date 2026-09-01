@@ -1,4 +1,5 @@
 import threading
+import time
 
 import numpy as np
 import cv2
@@ -124,6 +125,56 @@ def test_frame_ratee_n_interrompt_pas_l_enregistrement(tmp_path):
 
     assert rec._frame_count >= 3        # a repris après les échecs
     assert errors == []                 # aucune alerte pour un incident passager
+
+
+def test_origine_du_son_systeme_recalee_apres_l_attente_du_micro(tmp_path,
+                                                                 monkeypatch):
+    """Constaté en usage réel : sur un enregistrement avec le son
+    système, la bande-son arrivait ~1 s AVANT l'image.
+
+    Cause : _t0 servait d'origine au son système mais était posé avant
+    l'attente de PortAudio (~1 s), alors que la vidéo ne démarre
+    qu'après. get_audio_bytes réinsérait fidèlement ce silence en tête,
+    décalant tout le son système. L'origine doit être prise juste avant
+    que le son système et la vidéo ne partent ensemble."""
+    reference = {}
+
+    class FauxLoopback:
+        def __init__(self, **kw):
+            pass
+
+        def start(self, reference_time=None):
+            reference['t'] = reference_time
+            reference['moment_du_demarrage'] = time.time()
+            return True
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(recorder_core_module, 'SystemAudioCapture',
+                        FauxLoopback)
+
+    rec = RecorderCore(resolution="160x120", fps=10, audio_enabled=True,
+                       system_audio_enabled=True)
+    rec._temp_dir = str(tmp_path)
+
+    # Micro lent à ouvrir, comme PortAudio en vrai
+    def audio_lent(self):
+        time.sleep(0.4)
+        self._audio_ready.set()
+
+    monkeypatch.setattr(RecorderCore, '_capture_audio', audio_lent)
+    monkeypatch.setattr(RecorderCore, '_capture_screen',
+                        lambda self: setattr(self, 'is_recording', False))
+
+    rec.start_recording(str(tmp_path / "x.mp4"))
+    time.sleep(0.1)
+    rec.is_recording = False
+
+    ecart = reference['moment_du_demarrage'] - reference['t']
+    assert ecart < 0.15, (
+        f"Le son système est daté {ecart:.2f} s avant son démarrage réel : "
+        "il sortira en avance sur l'image")
 
 
 def test_session_de_capture_fermee_a_la_fin(tmp_path):

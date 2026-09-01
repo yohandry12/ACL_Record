@@ -98,10 +98,19 @@ class VideoEncoder:
                 '-vf', f'scale={width}:{height}',
                 # duration=longest : ne pas tronquer si une source s'arrête
                 # avant l'autre (le loopback ne délivre rien dans le silence)
+                # amix divise CHAQUE entrée par le nombre d'entrées :
+                # sans normalize=0, le micro sortait à -6 dB, inaudible
+                # sous la bande-son d'une vidéo. On garde donc les
+                # niveaux tels quels et on privilégie la voix, qui est
+                # le propos de l'enregistrement : le son système passe
+                # en fond à 65 %. dropout_transition=0 empêche amix de
+                # remonter le gain quand une source se tait — sinon le
+                # système enflerait pendant les silences du micro.
                 '-filter_complex',
                 f'[1:a]volume={audio_gain}[mic];'
-                f'[2:a]volume={audio_gain}[sys];'
-                f'[mic][sys]amix=inputs=2:duration=longest[aout]',
+                f'[2:a]volume={audio_gain * 0.65}[sys];'
+                f'[mic][sys]amix=inputs=2:duration=longest'
+                f':normalize=0:dropout_transition=0[aout]',
                 '-map', '0:v',
                 '-map', '[aout]',
                 '-c:a', 'aac',

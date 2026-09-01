@@ -3,6 +3,7 @@ Lumina Recorder - Core Recording Engine
 Gère la capture d'écran et audio avec optimisation selon le profil système.
 """
 
+import re
 import time
 import threading
 import mss
@@ -58,8 +59,57 @@ def _decode_device_name(raw: str) -> str:
         return raw
 
 
+def clean_device_name(raw: str) -> str:
+    """Rend lisible un nom de périphérique Windows.
+
+    Windows expose des noms bruts issus des pilotes, du genre
+    « Input (@System32\\drivers\\bthhfenum.sys,#4;%1 Hands-Free HF
+    Audio%0 ;(iPhone)) ». Le seul fragment utile pour l'utilisateur est
+    le nom de l'appareil, entre les dernières parenthèses.
+    """
+    name = _decode_device_name(str(raw).strip())
+
+    # Chemin de pilote : ne garder que l'appareil nommé en fin de chaîne
+    if '@System32' in name or '.sys,' in name:
+        appareil = re.findall(r'\(([^()]+)\)\s*\)?\s*$', name)
+        if appareil:
+            return appareil[0].strip()
+        # Repli : le texte avant la parenthèse ouvrante
+        return name.split('(')[0].strip() or name
+
+    # Suffixe technique du pilote entre parenthèses : « Réseau de
+    # microphones (Realtek HD Audio Mic Array input) » et « Réseau de
+    # microphones (Realtek Audio) » désignent le MÊME micro, exposé par
+    # deux API hôtes. Retirer le suffixe les rend identiques, donc
+    # dédoublonnables — c'est ce qui produisait trois entrées visuellement
+    # indiscernables dans la liste.
+    sans_suffixe = re.sub(r'\s*\((?:[^()]*\b(?:Realtek|Audio|input|Input|'
+                          r'HD|USB|WASAPI|MME|DirectSound)\b[^()]*)\)\s*$',
+                          '', name).strip()
+    if sans_suffixe:
+        name = sans_suffixe
+
+    # Parenthèses vides laissées par le nettoyage : « Ligne () »
+    name = re.sub(r'\s*\(\s*\)\s*$', '', name).strip()
+
+    # Parenthèse ouverte jamais refermée : l'API MME de Windows tronque
+    # les noms à 31 caractères, ce qui produit « Réseau de microphones
+    # (Realtek ». Couper au niveau de la parenthèse rend le nom propre
+    # ET identique à sa version non tronquée, donc dédoublonnable.
+    if name.count('(') > name.count(')'):
+        name = name[:name.rindex('(')].strip()
+
+    return name
+
+
 def list_input_devices() -> List[AudioDevice]:
-    """Liste les micros disponibles.
+    """Liste les micros disponibles, sans doublons ni noms illisibles.
+
+    PortAudio expose la MÊME carte via plusieurs API hôtes (MME,
+    WASAPI, DirectSound) : la liste brute contenait jusqu'à trois
+    entrées strictement identiques, impossibles à distinguer pour
+    l'utilisateur. On ne garde qu'une entrée par nom, en privilégiant
+    le périphérique par défaut du système.
 
     Retourne une liste vide si le sous-système audio est indisponible :
     l'absence de micro ne doit jamais empêcher l'application de démarrer.
@@ -73,16 +123,34 @@ def list_input_devices() -> List[AudioDevice]:
         except Exception:
             default_index = None
 
+        vus = {}          # nom nettoyé -> position dans `devices`
         for i in range(p.get_device_count()):
             info = p.get_device_info_by_index(i)
-            if info.get('maxInputChannels', 0) > 0:
-                devices.append(AudioDevice(
-                    index=i,
-                    name=_decode_device_name(
-                        str(info.get('name', f'Périphérique {i}')).strip()),
-                    max_channels=int(info['maxInputChannels']),
-                    is_default=(i == default_index)
-                ))
+            if info.get('maxInputChannels', 0) <= 0:
+                continue
+
+            nom = clean_device_name(info.get('name', f'Périphérique {i}'))
+            if not nom:
+                continue
+            est_defaut = (i == default_index)
+
+            if nom in vus:
+                # Doublon : ne le remplacer que si celui-ci est le
+                # périphérique par défaut du système, plus fiable
+                if est_defaut:
+                    devices[vus[nom]] = AudioDevice(
+                        index=i, name=nom,
+                        max_channels=int(info['maxInputChannels']),
+                        is_default=True)
+                continue
+
+            vus[nom] = len(devices)
+            devices.append(AudioDevice(
+                index=i,
+                name=nom,
+                max_channels=int(info['maxInputChannels']),
+                is_default=est_defaut,
+            ))
     except Exception as e:
         print(f"[Lumina] Impossible de lister les micros: {e}")
     finally:
@@ -188,7 +256,9 @@ class RecorderCore:
 
         self.output_path = output_path
         self.is_recording = True
-        # Origine de temps commune à la vidéo et au son système
+        # Origine provisoire : recalée plus bas, une fois le micro prêt,
+        # pour que le son système et la vidéo partagent bien la même
+        # seconde zéro
         self._t0 = time.time()
         self.audio_frames = []
         self._writer = None
@@ -222,6 +292,19 @@ class RecorderCore:
             self.audio_thread.start()
             if not self._audio_ready.wait(timeout=5.0):
                 print("[Lumina] Audio lent à démarrer, capture vidéo lancée")
+
+        # L'attente du micro ci-dessus a consommé du temps réel (~1 s le
+        # temps que PortAudio ouvre son flux). L'origine commune doit
+        # donc être RECALÉE ici, juste avant que le son système et la
+        # vidéo ne démarrent ensemble.
+        #
+        # Mesuré : sans ce recalage, le son système était daté depuis
+        # l'appel à start_recording, soit 1,1 s avant la première image.
+        # get_audio_bytes réinsérait fidèlement ce silence en tête, et
+        # tout le son système se retrouvait en avance d'une seconde sur
+        # l'image — flagrant sur une vidéo dont on entend la bande-son
+        # avant de la voir.
+        self._t0 = time.time()
 
         # Son système (loopback) : indépendant du micro, les deux peuvent
         # tourner ensemble et seront mixés par FFmpeg
