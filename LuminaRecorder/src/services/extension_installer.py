@@ -36,12 +36,15 @@ EXTENSIONS: Dict[str, dict] = {
     'sous_titres': {
         'nom': "Sous-titres automatiques",
         'description': "Transcription hors ligne par Whisper",
-        'taille_mo': 200,
+        # Mesuré. Les deux comptent pour l'utilisateur : ce qu'il
+        # télécharge, et l'espace disque qu'il y laisse ensuite.
+        'taille_mo': 69,
+        'disque_mo': 194,
         'modules': ['faster_whisper'],
         'version': "1.0",
         'archive': "lumina-ext-soustitres-1.0.zip",
         'url': f"{DEPOT}/ext-1.0/lumina-ext-soustitres-1.0.zip",
-        'taille_octets': 0,      # renseigné à la publication
+        'taille_octets': 72231409,
     },
     'ocr': {
         'nom': "Reconnaissance de texte",

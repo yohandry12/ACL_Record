@@ -890,6 +890,10 @@ class LuminaBridge:
                     'nom': ext['nom'],
                     'description': ext['description'],
                     'taille_mo': ext['taille_mo'],
+                    # Espace disque final, distinct du poids téléchargé :
+                    # sur une machine à faible stockage, c'est celui-là
+                    # qui décide
+                    'disque_mo': ext.get('disque_mo', ext['taille_mo']),
                     'installee': est_installee(cle),
                 } for cle, ext in EXTENSIONS.items()],
             }

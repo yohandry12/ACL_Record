@@ -22,6 +22,26 @@ def test_le_catalogue_declare_les_deux_extensions():
         assert ext['archive'].endswith('.zip')
 
 
+def test_le_catalogue_annonce_des_tailles_coherentes():
+    """La taille annoncée doit correspondre à l'archive publiée.
+
+    download_setup détruit un fichier dont la taille ne correspond pas :
+    une valeur erronée rendrait l'extension impossible à installer,
+    après un téléchargement complet. Zéro est toléré tant que l'archive
+    n'est pas publiée, mais désactive alors ce contrôle.
+    """
+    for cle, ext in EXTENSIONS.items():
+        octets = ext['taille_octets']
+        assert octets >= 0, cle
+        if octets:
+            annonce = ext['taille_mo'] * 1024 * 1024
+            # 25 % de tolérance : « 69 Mo » affiché reste juste
+            assert abs(octets - annonce) < annonce * 0.25, (
+                f"{cle} : {octets} octets pour {ext['taille_mo']} Mo annoncés")
+        # L'espace disque final est toujours supérieur au téléchargé
+        assert ext.get('disque_mo', ext['taille_mo']) >= ext['taille_mo'], cle
+
+
 def test_extension_absente_est_signalee(monkeypatch, tmp_path):
     from services import extension_installer as ei
     monkeypatch.setattr(ei, 'extensions_dir', lambda: tmp_path)
