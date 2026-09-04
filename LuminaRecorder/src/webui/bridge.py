@@ -31,6 +31,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+import base64
+
 from core.ai_options import AIOptions
 from core.encoder import VideoEncoder
 from core.focus_tracker import smart_focus_is_available
@@ -38,6 +40,8 @@ from core.global_hotkey import DEFAULT_HOTKEY, GlobalHotkey
 from core.recorder_core import RecorderCore, get_temp_dir, list_input_devices
 from core.system_analyzer import SystemAnalyzer
 from core.system_audio import system_audio_is_available
+from core.webcam_options import WebcamOptions
+from core.webcam_source import WebcamSource, lister_webcams
 from postprocess.base import run_postprocessors
 from postprocess.subtitles_processor import whisper_is_available
 from services.ai_credentials import (providers_status, set_api_key,
@@ -143,6 +147,16 @@ class LuminaBridge:
         self._update_installing = False
         self._update_checker = check_for_update
         self._update_downloader = download_setup
+
+        # Webcam : la source vit le temps d'un enregistrement (ou d'un
+        # test). Fabrique et énumération injectables pour les tests.
+        self._webcam = None
+        self._webcam_factory = WebcamSource
+        self._lister_webcams = lister_webcams
+        self._webcam_perdue_signalee = False
+        # Drapeau d'arrêt du thread d'aperçu, créé au démarrage de
+        # celui-ci et levé par _fermer_webcam
+        self._apercu_arret = None
 
         self._purge_temp_files()
 
@@ -400,7 +414,20 @@ class LuminaBridge:
                 'provider': self.config.get('ai', 'provider',
                                             fallback=DEFAULT_PROVIDER),
             },
+            'webcam': self._etat_webcam(),
         }
+
+    def _etat_webcam(self) -> dict:
+        """Réglages et caméras présentes. Sans caméra, la page grise la
+        section avec la raison plutôt que d'offrir une case inerte."""
+        try:
+            devices = self._lister_webcams()
+        except Exception:
+            devices = []
+        etat = WebcamOptions.load(self.config)
+        etat['available'] = bool(devices)
+        etat['devices'] = devices
+        return etat
 
     # ------------------------------------------------------------------
     # Réglages
@@ -418,6 +445,12 @@ class LuminaBridge:
         'delete_original': ('recording', 'delete_original'),
         'audio_device_index': ('recording', 'audio_device_index'),
         'save_directory': ('output', 'save_directory'),
+        'webcam_enabled': ('webcam', 'enabled'),
+        'webcam_device': ('webcam', 'device'),
+        'webcam_forme': ('webcam', 'forme'),
+        'webcam_coin': ('webcam', 'coin'),
+        'webcam_taille': ('webcam', 'taille'),
+        'webcam_miroir': ('webcam', 'miroir'),
     }
 
     def set_option(self, key: str, value) -> dict:
@@ -605,6 +638,7 @@ class LuminaBridge:
             self._final_output_path = str(save_dir / f"Lumina_{timestamp}.mp4")
 
             options = AIOptions.load(self.config)
+            webcam_filter = self._ouvrir_webcam()
             self.recorder = self._recorder_factory(
                 resolution=self._resolution(),
                 fps=self.recommended.get('fps', 30),
@@ -615,7 +649,8 @@ class LuminaBridge:
                                                  fallback=0.5),
                 audio_device_index=self._selected_device_index(),
                 filters=AIOptions.build_filters(
-                    options, plugins_actifs=self._plugins_actifs()),
+                    options, plugins_actifs=self._plugins_actifs(),
+                    webcam_filter=webcam_filter),
                 on_filter_disabled=lambda n: self.emit(
                     'notice', f"Filtre « {n} » désactivé (trop lent)"),
                 on_capture_error=lambda m: self.emit('error', m),
@@ -629,6 +664,10 @@ class LuminaBridge:
                 on_smart_focus=lambda m: self.emit('notice', m),
             )
         except Exception as e:
+            # La caméra a pu être ouverte juste avant que la construction
+            # du moteur échoue : sans cela elle resterait allumée alors
+            # qu'aucun enregistrement ne commence
+            self._fermer_webcam()
             return {'ok': False, 'error': f"Préparation impossible : {e}"}
 
         # Décompte avant capture : l'utilisateur voit 3, 2, 1 et sait
@@ -662,15 +701,22 @@ class LuminaBridge:
     def _launch(self) -> dict:
         try:
             if not self.recorder.start_recording(self._final_output_path):
+                # Libérer AVANT de repasser à l'arrêt : un test qui
+                # attend l'état IDLE ne doit jamais observer une caméra
+                # encore ouverte.
+                self._fermer_webcam()
                 self._set_state(IDLE)
                 return {'ok': False, 'error': "Le moteur a refusé de démarrer"}
         except Exception as e:
+            self._fermer_webcam()
             self._set_state(IDLE)
             return {'ok': False, 'error': str(e)}
 
         self._start_time = time.time()
         self._set_state(RECORDING)
         self._start_timer()
+        self._annoncer_webcam_absente()
+        self._start_webcam_preview()
         return {'ok': True}
 
     def _recorded_bytes(self, seconds: float = None) -> int:
@@ -725,6 +771,7 @@ class LuminaBridge:
         if self.state == PENDING:
             # Annulation pendant le délai du Smart Focus : rien n'a encore
             # été capturé
+            self._fermer_webcam()
             self._set_state(IDLE)
             return {'ok': True, 'cancelled': True}
 
@@ -739,6 +786,7 @@ class LuminaBridge:
         import shutil
         preserved_audio = None
         try:
+            self._fermer_webcam()
             self.emit('progress', {'step': "Arrêt de la capture",
                                    'value': 0.05})
             result = self.recorder.stop_recording()
@@ -813,6 +861,10 @@ class LuminaBridge:
         except Exception as e:
             self.emit('error', f"Traitement interrompu : {e}")
         finally:
+            # Idempotent : couvre une exception survenue avant la
+            # première ligne du bloc try, qui n'aurait pas atteint
+            # l'appel ci-dessus
+            self._fermer_webcam()
             # Le .keep.wav pèse plusieurs centaines de Mo par heure : il
             # ne doit pas survivre à un échec
             if preserved_audio and os.path.exists(preserved_audio):
@@ -821,6 +873,151 @@ class LuminaBridge:
                 except OSError:
                     pass
             self._set_state(IDLE)
+
+    # ------------------------------------------------------------------
+    # Webcam
+    # ------------------------------------------------------------------
+
+    def _ouvrir_webcam(self):
+        """Ouvre la caméra si l'utilisateur l'a demandée et rend le
+        filtre à placer en fin de chaîne, ou None.
+
+        Appelé AVANT la construction du recorder, donc avant le décompte :
+        l'ouverture prend jusqu'à 3 s, le décompte les couvre. Un échec
+        ici ne bloque jamais l'enregistrement : on continue sans vignette.
+        """
+        self._webcam_perdue_signalee = False
+        options = WebcamOptions.load(self.config)
+        if not options['enabled']:
+            return None
+        try:
+            self._webcam = self._webcam_factory(device_index=options['device'])
+            self._webcam.start()
+            return WebcamOptions.build_filter(options, self._webcam)
+        except Exception as e:
+            print(f"[Lumina] Webcam non ouverte : {e}")
+            self._fermer_webcam()
+            return None
+
+    def _fermer_webcam(self):
+        """Libère la caméra ; la LED s'éteint. Sans effet si absente."""
+        # Signaler d'abord l'arrêt de l'aperçu : le thread ne doit pas
+        # lire une source qu'on est en train de fermer
+        if self._apercu_arret is not None:
+            self._apercu_arret.set()
+            self._apercu_arret = None
+        source, self._webcam = self._webcam, None
+        if source is not None:
+            try:
+                source.stop()
+            except Exception as e:
+                print(f"[Lumina] Webcam non libérée : {e}")
+
+    def _annoncer_webcam_absente(self):
+        """Au démarrage réel : si la caméra est déjà en erreur, le dire."""
+        if self._webcam is not None and self._webcam.erreur:
+            self.emit('notice', f"Webcam indisponible : {self._webcam.erreur}"
+                                " — enregistrement sans elle")
+            self._webcam_perdue_signalee = True
+
+    APERCU_COTE = 120
+    APERCU_PAR_SECONDE = 8
+
+    def _start_webcam_preview(self):
+        """Pousse une vignette JPEG vers le widget à 8 im/s, depuis un
+        thread : ~6 Ko par image, rien n'est écrit sur disque."""
+        if self._webcam is None:
+            return
+        source = self._webcam
+        miroir = WebcamOptions.load(self.config)['miroir']
+        # Le rythme est tenu par un Event et non par time.sleep : d'une
+        # part `_fermer_webcam` le lève et la boucle sort aussitôt au
+        # lieu d'attendre la fin de sa pause ; d'autre part les tests
+        # neutralisent `time.sleep` du module pour sauter le décompte,
+        # ce qui ferait tourner cette boucle à vide et inonderait la
+        # page de vignettes. `Event.wait` garde ses 125 ms réelles.
+        arret = threading.Event()
+        self._apercu_arret = arret
+
+        def run():
+            intervalle = 1.0 / self.APERCU_PAR_SECONDE
+            while (not arret.is_set() and self.state == RECORDING
+                    and self._webcam is source):
+                image = source.latest()
+                if image is None:
+                    if source.erreur and not self._webcam_perdue_signalee:
+                        self._webcam_perdue_signalee = True
+                        self.emit('notice', "Webcam perdue, enregistrement "
+                                            "poursuivi sans elle")
+                else:
+                    encode = self._vignette_base64(image, self.APERCU_COTE,
+                                                   miroir)
+                    if encode:
+                        self.emit('webcam_preview', {'image': encode})
+                arret.wait(intervalle)
+
+        threading.Thread(target=run, daemon=True,
+                         name="lumina-webcam-apercu").start()
+
+    @staticmethod
+    def _vignette_base64(image, cote: int, miroir: bool) -> str:
+        """Carré centré de `cote` px, JPEG qualité 70, en base64."""
+        try:
+            import cv2
+            h, w = image.shape[:2]
+            c = min(h, w)
+            carre = image[(h - c) // 2:(h - c) // 2 + c,
+                          (w - c) // 2:(w - c) // 2 + c]
+            petit = cv2.resize(carre, (cote, cote),
+                               interpolation=cv2.INTER_AREA)
+            if miroir:
+                petit = cv2.flip(petit, 1)
+            ok, buf = cv2.imencode('.jpg', petit,
+                                   [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if not ok:
+                return ""
+            return base64.b64encode(buf.tobytes()).decode('ascii')
+        except Exception:
+            return ""
+
+    def get_webcams(self) -> dict:
+        """Relit les caméras présentes (l'utilisateur vient d'en brancher
+        une, ou ouvre les réglages)."""
+        try:
+            return {'ok': True, 'webcams': self._lister_webcams(rafraichir=True)}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    def test_webcam(self, index: int) -> dict:
+        """Ouvre la caméra choisie et rend une image, pour lever le doute
+        sur l'association nom → index. Bloque au plus 5 s."""
+        if self.state != IDLE:
+            return {'ok': False,
+                    'error': "Webcam occupée par l'enregistrement"}
+        source = None
+        try:
+            source = self._webcam_factory(device_index=int(index))
+            source.start()
+            fin = time.time() + 5.0
+            while time.time() < fin and not source.prete and not source.erreur:
+                time.sleep(0.05)
+            if source.erreur:
+                return {'ok': False, 'error': source.erreur}
+            image = source.latest()
+            if image is None:
+                return {'ok': False,
+                        'error': "Aucune image reçue en 5 s"}
+            miroir = WebcamOptions.load(self.config)['miroir']
+            return {'ok': True,
+                    'image': self._vignette_base64(image, 240, miroir)}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+        finally:
+            if source is not None:
+                try:
+                    source.stop()
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------
     # Raccourci global
@@ -1134,6 +1331,7 @@ class LuminaBridge:
         """
         if self.hotkey is not None:
             self.hotkey.stop()
+        self._fermer_webcam()
         if self.recorder is not None and self.recorder.is_recording:
             try:
                 self.recorder.stop_recording()

@@ -95,6 +95,37 @@ class FakeAnalyzer:
         return {'resolution': '1280x720', 'fps': 30, 'bitrate': '2500k'}
 
 
+class FakeWebcam:
+    """Source webcam factice : image immédiate, ou erreur à la demande."""
+    instances = []
+
+    def __init__(self, device_index=0, erreur="", **kwargs):
+        import numpy as np
+        FakeWebcam.instances.append(self)
+        self.device_index = device_index
+        self._erreur = erreur
+        self.demarree = False
+        self.arretee = False
+        self.image = None if erreur else np.zeros((480, 640, 3), np.uint8)
+
+    def start(self):
+        self.demarree = True
+
+    def latest(self):
+        return None if self.arretee else self.image
+
+    @property
+    def prete(self):
+        return self.latest() is not None
+
+    @property
+    def erreur(self):
+        return self._erreur
+
+    def stop(self):
+        self.arretee = True
+
+
 @pytest.fixture
 def bridge(monkeypatch, tmp_path):
     FakeEncoder.instances.clear()
@@ -106,6 +137,10 @@ def bridge(monkeypatch, tmp_path):
                      encoder_factory=FakeEncoder,
                      analyzer=FakeAnalyzer())
     b._window = FakeWindow()
+    FakeWebcam.instances.clear()
+    b._webcam_factory = FakeWebcam
+    b._lister_webcams = lambda rafraichir=False: [
+        {'index': 0, 'nom': "Cam de test"}]
     return b
 
 
@@ -826,3 +861,195 @@ def test_l_echec_d_installation_ne_leve_pas(bridge, monkeypatch):
 
     assert resultat['ok'] is False
     assert resultat['error']
+
+
+# --- webcam ---
+
+def activer_webcam(bridge):
+    bridge.config.set('webcam', 'enabled', True)
+
+
+def test_l_etat_initial_decrit_la_webcam(bridge):
+    etat = bridge.get_initial_state()['webcam']
+    assert set(etat) == {'enabled', 'device', 'forme', 'coin', 'taille',
+                         'miroir', 'available', 'devices'}
+    assert etat['enabled'] is False
+    assert etat['available'] is True
+    assert etat['devices'] == [{'index': 0, 'nom': "Cam de test"}]
+
+
+def test_sans_camera_la_webcam_est_indisponible(bridge):
+    bridge._lister_webcams = lambda rafraichir=False: []
+    assert bridge.get_initial_state()['webcam']['available'] is False
+
+
+def test_les_reglages_webcam_sont_persistes(bridge):
+    for cle, valeur, ini in (('webcam_enabled', True, 'enabled'),
+                             ('webcam_device', 1, 'device'),
+                             ('webcam_forme', 'carre', 'forme'),
+                             ('webcam_coin', 'haut-gauche', 'coin'),
+                             ('webcam_taille', 'grande', 'taille'),
+                             ('webcam_miroir', False, 'miroir')):
+        assert bridge.set_option(cle, valeur)['ok'] is True
+        assert ('webcam', ini, valeur) in bridge.config.saved
+
+
+def test_webcam_desactivee_aucune_source_n_est_creee(bridge, monkeypatch):
+    demarrer_sans_attendre(bridge, monkeypatch)
+    assert FakeWebcam.instances == []
+    filtres = bridge.recorder.kwargs['filters']
+    assert all(f.name != "Webcam" for f in filtres)
+
+
+def test_webcam_activee_la_source_est_ouverte_avant_la_capture(bridge,
+                                                                 monkeypatch):
+    activer_webcam(bridge)
+    bridge.config.set('webcam', 'device', 1)
+    demarrer_sans_attendre(bridge, monkeypatch)
+
+    assert len(FakeWebcam.instances) == 1
+    source = FakeWebcam.instances[0]
+    assert source.demarree is True
+    assert source.device_index == 1
+    # Le filtre webcam est le dernier de la chaîne transmise au moteur
+    filtres = bridge.recorder.kwargs['filters']
+    assert filtres and filtres[-1].name == "Webcam"
+    assert filtres[-1].source is source
+
+
+def test_la_webcam_est_liberee_a_l_arret(bridge, monkeypatch):
+    activer_webcam(bridge)
+    demarrer_sans_attendre(bridge, monkeypatch)
+    bridge.stop_recording()
+    assert attendre(lambda: bridge.state == IDLE)
+    assert FakeWebcam.instances[0].arretee is True
+    assert bridge._webcam is None
+
+
+def test_la_webcam_est_liberee_si_le_decompte_est_annule(bridge):
+    activer_webcam(bridge)
+    bridge.start_recording()
+    bridge.stop_recording()
+    assert FakeWebcam.instances[0].arretee is True
+
+
+def test_la_webcam_est_liberee_si_le_moteur_refuse(bridge, monkeypatch):
+    activer_webcam(bridge)
+    monkeypatch.setattr(FakeRecorder, 'start_recording',
+                        lambda self, path: False)
+    monkeypatch.setattr(bridge, 'COUNTDOWN_SECONDS', 0, raising=False)
+    monkeypatch.setattr(bridge_module.time, 'sleep', lambda s: None)
+    bridge.start_recording()
+    assert attendre(lambda: bridge.state == IDLE)
+    assert FakeWebcam.instances[0].arretee is True
+
+
+def test_la_webcam_est_liberee_si_la_preparation_echoue(bridge, monkeypatch):
+    """La caméra est ouverte juste avant la construction du moteur : si
+    celle-ci lève, elle ne doit pas rester allumée."""
+    activer_webcam(bridge)
+
+    def moteur_casse(**kw):
+        raise RuntimeError("pas de moteur")
+    bridge._recorder_factory = moteur_casse
+
+    assert bridge.start_recording()['ok'] is False
+    assert bridge.state == IDLE
+    assert FakeWebcam.instances[0].arretee is True
+    assert bridge._webcam is None
+
+
+def test_la_webcam_est_liberee_a_la_fermeture(bridge, monkeypatch):
+    activer_webcam(bridge)
+    demarrer_sans_attendre(bridge, monkeypatch)
+    bridge.shutdown()
+    assert FakeWebcam.instances[0].arretee is True
+
+
+def test_une_webcam_en_erreur_n_empeche_pas_d_enregistrer(bridge,
+                                                          monkeypatch):
+    activer_webcam(bridge)
+    bridge._webcam_factory = lambda **kw: FakeWebcam(erreur="occupée", **kw)
+    demarrer_sans_attendre(bridge, monkeypatch)
+
+    assert bridge.state == RECORDING
+    # L'avis est émis après le passage à RECORDING : attendre plutôt que
+    # de lire les événements dans la foulée du changement d'état
+    assert attendre(lambda: any('Webcam indisponible' in a for a in
+                                bridge._window.events_named('notice')))
+
+
+def test_une_fabrique_qui_leve_n_empeche_pas_d_enregistrer(bridge,
+                                                           monkeypatch):
+    activer_webcam(bridge)
+
+    def cassee(**kw):
+        raise RuntimeError("pas de pilote")
+    bridge._webcam_factory = cassee
+    demarrer_sans_attendre(bridge, monkeypatch)
+
+    assert bridge.state == RECORDING
+    assert bridge._webcam is None
+
+
+def test_l_apercu_est_pousse_pendant_l_enregistrement(bridge, monkeypatch):
+    activer_webcam(bridge)
+    demarrer_sans_attendre(bridge, monkeypatch)
+    assert attendre(lambda: bridge._window.events_named('webcam_preview'))
+    envoye = bridge._window.events_named('webcam_preview')[0]
+    assert '"image"' in envoye
+    bridge.stop_recording()
+    attendre(lambda: bridge.state == IDLE)
+    combien = len(bridge._window.events_named('webcam_preview'))
+    time.sleep(0.3)
+    # Plus rien après l'arrêt
+    assert len(bridge._window.events_named('webcam_preview')) == combien
+
+
+def test_aucun_apercu_sans_webcam(bridge, monkeypatch):
+    demarrer_sans_attendre(bridge, monkeypatch)
+    time.sleep(0.3)
+    assert bridge._window.events_named('webcam_preview') == []
+
+
+def test_une_webcam_perdue_est_signalee_une_seule_fois(bridge, monkeypatch):
+    activer_webcam(bridge)
+    demarrer_sans_attendre(bridge, monkeypatch)
+    source = FakeWebcam.instances[0]
+    source.image = None
+    source._erreur = "Webcam perdue en cours d'enregistrement"
+    assert attendre(lambda: any('perdue' in a for a in
+                                bridge._window.events_named('notice')))
+    time.sleep(0.4)
+    assert sum('perdue' in a for a in
+               bridge._window.events_named('notice')) == 1
+    assert bridge.state == RECORDING
+
+
+def test_get_webcams_relit_la_liste(bridge):
+    appels = []
+    bridge._lister_webcams = lambda rafraichir=False: appels.append(
+        rafraichir) or [{'index': 0, 'nom': "Cam"}]
+    resultat = bridge.get_webcams()
+    assert resultat == {'ok': True, 'webcams': [{'index': 0, 'nom': "Cam"}]}
+    assert appels == [True]
+
+
+def test_test_webcam_rend_une_image(bridge):
+    resultat = bridge.test_webcam(0)
+    assert resultat['ok'] is True
+    assert isinstance(resultat['image'], str) and len(resultat['image']) > 100
+    assert FakeWebcam.instances[0].arretee is True
+
+
+def test_test_webcam_signale_l_erreur(bridge):
+    bridge._webcam_factory = lambda **kw: FakeWebcam(erreur="occupée", **kw)
+    resultat = bridge.test_webcam(0)
+    assert resultat['ok'] is False
+    assert 'occupée' in resultat['error']
+
+
+def test_test_webcam_refuse_pendant_l_enregistrement(bridge, monkeypatch):
+    demarrer_sans_attendre(bridge, monkeypatch)
+    resultat = bridge.test_webcam(0)
+    assert resultat['ok'] is False
