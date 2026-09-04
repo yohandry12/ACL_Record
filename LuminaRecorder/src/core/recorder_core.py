@@ -207,7 +207,11 @@ class RecorderCore:
         self._audio_ready = threading.Event()
 
         self.audio_frames = []
-        self._writer = None            # cv2.VideoWriter, ouvert à la 1re frame
+        # Flux brut MJPEG, ouvert à la 1re frame (voir _write_frame)
+        self._raw_file = None
+        self._raw_origin = None        # seconde zéro des créneaux
+        self._last_jpg = None          # dernière image encodée
+        self._packets_written = 0      # créneaux écrits à cadence nominale
         self._frame_size = None        # (w, h) figé à l'ouverture du writer
         self._size_mismatch_logged = False
         self._raw_video_path = ""
@@ -261,7 +265,10 @@ class RecorderCore:
         # seconde zéro
         self._t0 = time.time()
         self.audio_frames = []
-        self._writer = None
+        self._raw_file = None
+        self._raw_origin = None
+        self._last_jpg = None
+        self._packets_written = 0
         self._frame_size = None
         self._size_mismatch_logged = False
         self._raw_video_path = ""
@@ -336,9 +343,10 @@ class RecorderCore:
         if self.audio_thread:
             self.audio_thread.join(timeout=2.0)
 
-        if self._writer is not None:
-            self._writer.release()
-            self._writer = None
+        # Le thread de capture est arrêté : la dernière image tient
+        # jusqu'à cet instant, exactement comme le son est complété
+        # jusqu'à maintenant dans _save_system_audio
+        self._finalize_raw_video()
 
         if self.start_time:
             duration = (datetime.now() - self.start_time).total_seconds()
@@ -361,28 +369,57 @@ class RecorderCore:
 
         return raw_video_path, raw_audio_path
 
-    def _write_frame(self, frame_bgr):
-        """Applique la chaîne de filtres puis écrit la frame sur disque."""
-        frame_bgr = self.filter_chain.process(frame_bgr)
+    # Qualité JPEG du flux brut. Mesuré sur cet écran : q90 = 171 Ko et
+    # 7 ms par image, contre 126 Ko et 26 ms pour cv2.VideoWriter MJPG,
+    # dont la qualité n'est pas réglable. Le brut est jeté après
+    # encodage ; ce qui compte est qu'il n'ajoute pas d'artefacts
+    # visibles à ceux du H.264 final.
+    JPEG_QUALITY = 90
 
-        if self._writer is None:
+    def _write_frame(self, frame_bgr, t=None):
+        """Applique les filtres puis place l'image dans le flux brut.
+
+        Le flux brut est un MJPEG nu à cadence CONSTANTE (self.fps) :
+        chaque image y est répétée pour tous les créneaux qu'elle a
+        réellement occupés à l'écran, et une image captée avant le
+        créneau suivant est simplement remplacée par la suivante.
+
+        C'est ce qui garde la vidéo alignée sur le son quelle que soit
+        la cadence de capture. Mesuré sur un enregistrement réel : la
+        capture oscillait entre ~11 im/s (page statique) et ~20 im/s
+        (vidéo), moyenne 17,47 ; l'ancien AVI sans horodatage, encodé à
+        17 im/s constants, dérivait de 6,6 s en 44 s pendant que le son
+        restait exact à 7 ms près. Un doublon coûte 0,13 ms d'écriture,
+        l'image n'est encodée qu'une fois.
+
+        `t` est l'instant réel de la capture (time.time()) ; absent,
+        c'est maintenant.
+        """
+        frame_bgr = self.filter_chain.process(frame_bgr)
+        if t is None:
+            t = time.time()
+
+        if self._raw_file is None:
             Path(self._temp_dir).mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self._raw_video_path = str(
-                Path(self._temp_dir) / f"lumina_raw_{timestamp}.avi")
+                Path(self._temp_dir) / f"lumina_raw_{timestamp}.mjpeg")
             h, w = frame_bgr.shape[:2]
             self._frame_size = (w, h)
-            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-            self._writer = cv2.VideoWriter(
-                self._raw_video_path, fourcc, self.fps, (w, h))
+            # Même seconde zéro que le son système (self._t0) : les
+            # deux pistes partent du même instant, sans hypothèse sur
+            # le délai de la première image
+            self._raw_origin = self._t0 if self._t0 else t
+            self._packets_written = 0
+            self._last_jpg = None
+            self._raw_file = open(self._raw_video_path, 'wb')
 
-        # cv2.VideoWriter ignore SILENCIEUSEMENT une frame dont la taille
-        # diffère de celle d'ouverture : la frame serait perdue sans le
-        # moindre message. On redimensionne plutôt que de perdre l'image.
-        # Cas légitime : l'utilisateur change la résolution de son écran
-        # en cours d'enregistrement. On le signale une fois — sans ce
-        # message, une régression du suivi de fenêtre ne se verrait qu'à
-        # une image légèrement étirée, jamais diagnostiquée.
+        # Une image d'une autre taille casserait le flux : on la
+        # redimensionne plutôt que de la perdre. Cas légitime :
+        # l'utilisateur change la résolution de son écran en cours
+        # d'enregistrement. Signalé une fois — sans ce message, une
+        # régression du suivi de fenêtre ne se verrait qu'à une image
+        # légèrement étirée, jamais diagnostiquée.
         h, w = frame_bgr.shape[:2]
         if (w, h) != self._frame_size:
             if not self._size_mismatch_logged:
@@ -392,8 +429,42 @@ class RecorderCore:
             frame_bgr = cv2.resize(frame_bgr, self._frame_size,
                                    interpolation=cv2.INTER_AREA)
 
-        self._writer.write(frame_bgr)
+        ok, buf = cv2.imencode('.jpg', frame_bgr,
+                               [cv2.IMWRITE_JPEG_QUALITY, self.JPEG_QUALITY])
+        if not ok:
+            raise RuntimeError("encodage JPEG impossible")
+        jpg = buf.tobytes()
+
+        if self._last_jpg is None:
+            # La première image tient depuis l'origine : le flux ne
+            # commence pas par un trou que le son n'aurait pas
+            self._last_jpg = jpg
+        self._flush_until(t)
+        self._last_jpg = jpg
         self._frame_count += 1
+
+    def _flush_until(self, t: float) -> None:
+        """Écrit l'image courante pour chaque créneau écoulé avant t."""
+        if self._raw_file is None or self._last_jpg is None:
+            return
+        intervalle = 1.0 / self.fps
+        while self._raw_origin + self._packets_written * intervalle < t - 1e-6:
+            self._raw_file.write(self._last_jpg)
+            self._packets_written += 1
+
+    def _finalize_raw_video(self, t_stop: Optional[float] = None) -> None:
+        """Tient la dernière image jusqu'à l'arrêt et ferme le flux.
+
+        Le flux dure alors exactement (t_stop - origine), comme la piste
+        du son système complétée jusqu'au même instant.
+        """
+        if self._raw_file is None:
+            return
+        self._flush_until(t_stop if t_stop is not None else time.time())
+        try:
+            self._raw_file.close()
+        finally:
+            self._raw_file = None
 
     def _lock_smart_focus(self):
         """Verrouille le Smart Focus sur la fenêtre active, si demandé.
@@ -478,10 +549,13 @@ class RecorderCore:
                     region = (self._focus_tracker.current_region()
                               if self._focus_tracker else self.monitor)
                     screenshot = sct.grab(region)
+                    # L'instant de l'image : celui où BitBlt vient de
+                    # lire l'écran, pas celui où elle sera écrite
+                    t_capture = time.time()
                     img = np.array(screenshot)
                     img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
-                    self._write_frame(img_bgr)
+                    self._write_frame(img_bgr, t=t_capture)
                     echecs = 0
                 except Exception as e:
                     echecs += 1

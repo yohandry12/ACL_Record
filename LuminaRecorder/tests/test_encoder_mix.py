@@ -83,6 +83,48 @@ def test_le_gain_utilisateur_s_applique_aux_deux_sources(monkeypatch,
     assert 'volume=0.7[sys]' in cmd      # 2.0 x 0.35
 
 
+def commande_video_seule(monkeypatch, tmp_path, nom_video):
+    capturee = {}
+
+    def faux_run(cmd, *args, **kwargs):
+        capturee['cmd'] = cmd
+
+        class Resultat:
+            returncode = 0
+            stderr = ''
+            stdout = ''
+        return Resultat()
+
+    import core.encoder as encoder_module
+    monkeypatch.setattr(encoder_module.subprocess, 'run', faux_run)
+    video = tmp_path / nom_video
+    video.write_bytes(b"fake")
+    VideoEncoder().encode(video_path=str(video), audio_path=None,
+                          output_path=str(tmp_path / "out.mp4"),
+                          resolution="1280x720", fps=30)
+    return capturee.get('cmd', [])
+
+
+def test_un_flux_mjpeg_brut_est_lu_a_la_cadence_nominale(monkeypatch,
+                                                         tmp_path):
+    """Le flux brut est un MJPEG nu à cadence constante : FFmpeg doit
+    savoir qu'il s'agit de ce format et à quelle cadence le lire. Sans
+    -f mjpeg, un fichier sans en-tête n'est pas reconnu ; sans
+    -framerate, il serait lu à 25 im/s et la vidéo dériverait."""
+    cmd = commande_video_seule(monkeypatch, tmp_path, "v.mjpeg")
+    i = cmd.index('-i')
+
+    assert cmd[i - 4:i] == ['-f', 'mjpeg', '-framerate', '30']
+    assert '-r' not in cmd[:i]
+
+
+def test_un_avi_garde_la_lecture_historique(monkeypatch, tmp_path):
+    cmd = commande_video_seule(monkeypatch, tmp_path, "v.avi")
+    i = cmd.index('-i')
+
+    assert cmd[i - 2:i] == ['-r', '30']
+
+
 def test_pas_de_remontee_de_gain_dans_les_silences(monkeypatch, tmp_path):
     """Sans dropout_transition=0, amix remonte le niveau des sources
     restantes quand une se tait : le son système enflerait à chaque

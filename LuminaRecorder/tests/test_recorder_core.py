@@ -17,22 +17,40 @@ class WhiteFilter(FrameFilter):
         return np.full_like(frame, 255)
 
 
-def make_frame(h=120, w=160):
-    return np.zeros((h, w, 3), dtype=np.uint8)
+def make_frame(h=120, w=160, value=0):
+    return np.full((h, w, 3), value, dtype=np.uint8)
+
+
+SOI = b'\xff\xd8\xff'   # début d'une image JPEG
+
+
+def paquets(path):
+    """Les images JPEG du flux brut, dans l'ordre.
+
+    Le fichier brut est un MJPEG nu : une suite d'images JPEG à cadence
+    constante. Compter les images, c'est compter les marqueurs SOI.
+    """
+    from pathlib import Path
+    data = Path(path).read_bytes()
+    return [SOI + p for p in data.split(SOI)[1:]]
+
+
+def decoder(paquet):
+    return cv2.imdecode(np.frombuffer(paquet, dtype=np.uint8), cv2.IMREAD_COLOR)
 
 
 def test_frames_written_to_disk_not_ram(tmp_path):
     rec = RecorderCore(resolution="160x120", fps=10, audio_enabled=False)
     rec.is_recording = True
     rec._temp_dir = str(tmp_path)  # rediriger les fichiers temporaires
-    for _ in range(20):
-        rec._write_frame(make_frame())
+    t0 = time.time()
+    rec._t0 = t0
+    for i in range(20):
+        rec._write_frame(make_frame(), t=t0 + i / 10)
+    rec._finalize_raw_video(t0 + 2.0)
     video_path, _ = rec.stop_recording()
     assert not hasattr(rec, 'frames') or rec.frames == []  # plus de buffer RAM
-    cap = cv2.VideoCapture(video_path)
-    assert cap.isOpened()
-    assert int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) == 20
-    cap.release()
+    assert len(paquets(video_path)) == 20
 
 
 def test_filters_applied_before_write(tmp_path):
@@ -40,14 +58,129 @@ def test_filters_applied_before_write(tmp_path):
                        filters=[WhiteFilter()])
     rec.is_recording = True
     rec._temp_dir = str(tmp_path)
-    for _ in range(5):
-        rec._write_frame(make_frame())
+    t0 = time.time()
+    rec._t0 = t0
+    for i in range(5):
+        rec._write_frame(make_frame(), t=t0 + i / 10)
+    rec._finalize_raw_video(t0 + 0.5)
     video_path, _ = rec.stop_recording()
-    cap = cv2.VideoCapture(video_path)
-    ok, frame = cap.read()
-    cap.release()
-    assert ok
-    assert frame.mean() > 200  # frames noires devenues blanches (MJPG avec perte)
+    frame = decoder(paquets(video_path)[0])
+    assert frame is not None
+    assert frame.mean() > 200  # frames noires devenues blanches (JPEG avec perte)
+
+
+# --- Cadence constante par horodatage -----------------------------------
+#
+# Mesuré sur un enregistrement réel : la capture tournait à ~11 im/s sur
+# une page statique puis ~20 im/s sur une vidéo, pour une moyenne de
+# 17,47. Encodé à 17 im/s constants, le fichier dérivait de 6,6 s en 44 s
+# pendant que le son restait exact. Le flux brut porte désormais chaque
+# image à sa place réelle : répétée si la capture a été lente, sautée si
+# elle a été rapide.
+
+def test_une_capture_lente_est_completee_a_cadence_constante(tmp_path):
+    rec = RecorderCore(resolution="160x120", fps=30, audio_enabled=False)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    t0 = time.time()
+    rec._t0 = t0
+    for i in range(10):                         # 10 im/s réelles
+        rec._write_frame(make_frame(), t=t0 + i * 0.1)
+    rec._finalize_raw_video(t0 + 1.0)
+    video_path, _ = rec.stop_recording()
+
+    assert len(paquets(video_path)) == 30       # 1 s à 30 im/s
+    assert rec._frame_count == 10               # images réellement captées
+
+
+def test_une_capture_rapide_saute_des_images(tmp_path):
+    rec = RecorderCore(resolution="160x120", fps=30, audio_enabled=False)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    t0 = time.time()
+    rec._t0 = t0
+    for i in range(60):                         # 60 im/s réelles
+        rec._write_frame(make_frame(), t=t0 + i / 60)
+    rec._finalize_raw_video(t0 + 1.0)
+    video_path, _ = rec.stop_recording()
+
+    assert len(paquets(video_path)) == 30
+
+
+def test_chaque_image_tient_jusqu_a_la_suivante(tmp_path):
+    """L'image A captée à 0,5 s reste à l'écran jusqu'à B à 0,8 s, et
+    tient depuis l'origine : le flux ne commence pas par un trou."""
+    rec = RecorderCore(resolution="160x120", fps=30, audio_enabled=False)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    t0 = time.time()
+    rec._t0 = t0
+    rec._write_frame(make_frame(value=0), t=t0 + 0.5)      # noire
+    rec._write_frame(make_frame(value=255), t=t0 + 0.8)    # blanche
+    rec._finalize_raw_video(t0 + 1.0)
+    video_path, _ = rec.stop_recording()
+
+    images = paquets(video_path)
+    assert len(images) == 30
+    noires = sum(1 for p in images if decoder(p).mean() < 50)
+    blanches = sum(1 for p in images if decoder(p).mean() > 200)
+    assert noires == 24                         # créneaux 0 à 23 (< 0,8 s)
+    assert blanches == 6                        # créneaux 24 à 29
+
+
+def test_la_duree_du_flux_egale_la_duree_reelle(tmp_path):
+    """Quelle que soit la cadence de capture, le flux dure exactement
+    le temps écoulé : c'est ce qui le garde aligné sur le son."""
+    rec = RecorderCore(resolution="160x120", fps=25, audio_enabled=False)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    t0 = time.time()
+    rec._t0 = t0
+    for t in (0.03, 0.9, 0.95, 1.0, 2.7):       # cadence chaotique
+        rec._write_frame(make_frame(), t=t0 + t)
+    rec._finalize_raw_video(t0 + 3.0)
+    video_path, _ = rec.stop_recording()
+
+    assert len(paquets(video_path)) == 75       # 3 s à 25 im/s
+
+
+def test_stop_recording_finalise_le_flux_a_l_instant_de_l_arret(tmp_path):
+    rec = RecorderCore(resolution="160x120", fps=10, audio_enabled=False)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    t0 = time.time() - 1.0
+    rec._t0 = t0
+    rec._write_frame(make_frame(), t=t0)
+    video_path, _ = rec.stop_recording()        # finalise à maintenant
+
+    assert 10 <= len(paquets(video_path)) <= 12  # ~1 s à 10 im/s
+
+
+def test_le_flux_brut_est_lu_par_ffmpeg_a_la_cadence_nominale(tmp_path):
+    import json
+    import shutil
+    import subprocess
+
+    if not shutil.which('ffprobe'):
+        pytest.skip("ffprobe absent")
+
+    rec = RecorderCore(resolution="160x120", fps=30, audio_enabled=False)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    t0 = time.time()
+    rec._t0 = t0
+    for i in range(10):
+        rec._write_frame(make_frame(), t=t0 + i * 0.1)
+    rec._finalize_raw_video(t0 + 1.0)
+    video_path, _ = rec.stop_recording()
+
+    assert video_path.endswith('.mjpeg')
+    sortie = subprocess.run(
+        ['ffprobe', '-v', 'error', '-f', 'mjpeg', '-framerate', '30',
+         '-count_frames', '-show_entries', 'stream=nb_read_frames',
+         '-of', 'json', video_path],
+        capture_output=True, text=True).stdout
+    assert int(json.loads(sortie)['streams'][0]['nb_read_frames']) == 30
 
 
 def test_stop_without_frames_returns_empty(tmp_path):

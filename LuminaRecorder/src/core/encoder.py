@@ -74,13 +74,22 @@ class VideoEncoder:
             return False
             
         width, height = resolution.split('x')
-        
+
+        # Le flux brut du recorder est un MJPEG nu à cadence constante,
+        # sans en-tête : FFmpeg doit savoir qu'il s'agit de ce format et
+        # à quelle cadence le lire. Sans -framerate il serait lu à
+        # 25 im/s et la vidéo dériverait par rapport au son. Les autres
+        # conteneurs (AVI, MP4) gardent la lecture historique.
+        if video_path.lower().endswith('.mjpeg'):
+            entree = ['-f', 'mjpeg', '-framerate', str(fps), '-i', video_path]
+        else:
+            entree = ['-r', str(fps), '-i', video_path]
+
         # Construction de la commande FFmpeg
         cmd = [
             self.ffmpeg_path,
             '-y',  # Écraser la sortie si existe
-            '-r', str(fps),
-            '-i', video_path,
+            *entree,
         ]
         
         has_mic = bool(audio_path and os.path.exists(audio_path))

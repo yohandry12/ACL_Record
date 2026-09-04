@@ -672,18 +672,22 @@ Vous pouvez les modifier manuellement si nécessaire.
 
                 # Encodage FFmpeg
                 encoder = VideoEncoder()
+                # Par le nom sans extension : le brut est un .mjpeg, et
+                # remplacer « .avi » ne changeait plus rien — le final
+                # aurait écrasé le brut
                 final_path = getattr(self, 'final_output_path', None) \
-                    or self.current_video_path.replace('.avi', '_final.mp4')
+                    or str(Path(self.current_video_path).with_name(
+                        Path(self.current_video_path).stem + '_final.mp4'))
 
                 success = encoder.encode(
                     video_path=self.current_video_path,
                     audio_path=self.current_audio_path,
                     output_path=final_path,
                     resolution=self.resolution_combo.get().split()[0],
-                    # FPS réellement atteint : encoder au fps nominal
-                    # accélérerait l'image sur une machine lente
-                    fps=round(getattr(self.recorder, 'actual_fps',
-                                      self.recommended_settings.get('fps', 30)), 2),
+                    # Cadence nominale : le flux brut est déjà à cadence
+                    # constante, chaque image tenue à sa place réelle
+                    fps=int(getattr(self.recorder, 'fps',
+                                    self.recommended_settings.get('fps', 30))),
                     bitrate=self.bitrate_var.get(),
                     # Le gain est déjà appliqué au WAV pendant la capture, ne pas le réappliquer ici
                     audio_gain=1.0,

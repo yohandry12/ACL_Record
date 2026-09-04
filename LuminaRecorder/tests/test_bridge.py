@@ -249,16 +249,22 @@ def test_moteur_qui_refuse_revient_au_repos(bridge, monkeypatch):
     assert attendre(lambda: bridge.state == IDLE)
 
 
-def test_encodage_recoit_le_fps_reel(bridge, monkeypatch):
-    """Le fps nominal donnerait une vidéo accélérée et désynchronisée du
-    son : c'est le fps mesuré qui doit être encodé."""
+def test_encodage_recoit_le_fps_nominal(bridge, monkeypatch):
+    """Le flux brut est à cadence constante nominale, chaque image tenue
+    à sa place réelle : c'est cette cadence que FFmpeg doit lire.
+
+    L'ancien contrat encodait la cadence MESURÉE arrondie. Mesuré sur un
+    enregistrement réel : 17,47 im/s arrondis à 17 étiraient la vidéo de
+    2,8 %, et surtout la cadence variable de la capture (11 à 20 im/s)
+    faisait dériver l'image de 6,6 s en 44 s."""
     demarrer_sans_attendre(bridge, monkeypatch)
+    bridge.recorder.fps = 25
     bridge.recorder.actual_fps = 11.4
     bridge.stop_recording()
 
     assert attendre(lambda: FakeEncoder.instances
                     and FakeEncoder.instances[-1].calls)
-    assert FakeEncoder.instances[-1].calls[0]['fps'] == 11
+    assert FakeEncoder.instances[-1].calls[0]['fps'] == 25
 
 
 def test_encodage_sans_gain_supplementaire(bridge, monkeypatch):

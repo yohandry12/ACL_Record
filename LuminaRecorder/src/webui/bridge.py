@@ -764,8 +764,13 @@ class LuminaBridge:
                 audio_path=raw_audio,
                 output_path=self._final_output_path,
                 resolution=self._resolution(),
-                fps=int(round(getattr(self.recorder, 'actual_fps',
-                                      self.recommended.get('fps', 30)))),
+                # Cadence NOMINALE, pas la cadence mesurée : le flux
+                # brut est déjà à cadence constante, chaque image tenue
+                # à sa place réelle. Mesuré avec l'ancien calcul : 17,47
+                # im/s arrondis à 17 étiraient la vidéo de 2,8 %, en
+                # plus de la dérive due à la cadence variable.
+                fps=int(getattr(self.recorder, 'fps',
+                                self.recommended.get('fps', 30))),
                 bitrate=self._bitrate(),
                 audio_gain=1.0,   # le gain est déjà appliqué à la capture
                 system_audio_path=getattr(self.recorder, 'system_audio_path',
