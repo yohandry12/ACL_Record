@@ -72,6 +72,26 @@ def test_installation_hors_ligne_echoue_proprement(monkeypatch, tmp_path):
     assert resultat['error']
 
 
+def test_un_404_est_explique_plutot_que_recopie(monkeypatch, tmp_path):
+    """Vérifié dans l'interface : « 404 Client Error: Not Found for url:
+    https://… » est exact mais n'indique aucune action."""
+    import requests
+
+    from services import extension_installer as ei
+    monkeypatch.setattr(ei, 'extensions_dir', lambda: tmp_path)
+
+    def introuvable(*a, **k):
+        reponse = requests.Response()
+        reponse.status_code = 404
+        raise requests.exceptions.HTTPError(response=reponse)
+
+    resultat = installer_extension('sous_titres', telecharger=introuvable)
+
+    assert resultat['ok'] is False
+    assert 'introuvable' in resultat['error']
+    assert 'Client Error' not in resultat['error']
+
+
 def test_extension_inconnue_est_refusee():
     assert installer_extension('nimporte_quoi')['ok'] is False
 

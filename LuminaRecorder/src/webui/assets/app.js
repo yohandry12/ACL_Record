@@ -166,6 +166,11 @@ window.luminaEvent = function (message) {
     onUpdateLaunching();
   } else if (event === 'update_error') {
     onUpdateError(payload);
+  } else if (event === 'extension_progress') {
+    onExtensionProgress(payload);
+  } else if (event === 'extension_installed') {
+    // La case correspondante se dégrise sans redémarrage
+    refreshAiAvailability();
   }
 };
 
@@ -253,8 +258,130 @@ function onUpdateError(message) {
  */
 
 async function openPluginsModal() {
-  await renderPlugins();
+  await Promise.all([renderExtensions(), renderPlugins()]);
   ancrerModale('plugins-modal', 'open-plugins');
+}
+
+/* ---------- Extensions officielles ----------
+ *
+ * Whisper et l'OCR ne sont plus livres avec l'application : ils
+ * pesaient 700 Mo sur un socle qui en fait 250. Ce panneau est le
+ * recours de l'utilisateur venu d'une version ou ils etaient embarques —
+ * sans lui, sa fonction disparaitrait derriere une case grisee.
+ */
+
+const extensionEnCours = new Set();
+
+async function renderExtensions() {
+  const data = await call('get_extensions');
+  const liste = $('extension-list');
+  liste.textContent = '';
+
+  if (!data || !data.ok) {
+    const vide = document.createElement('p');
+    vide.className = 'plugin-vide';
+    vide.textContent = 'Catalogue indisponible'
+      + (data && data.error ? ' : ' + data.error : '');
+    liste.append(vide);
+    return;
+  }
+
+  for (const ext of data.extensions) {
+    const ligne = document.createElement('div');
+    ligne.className = 'plugin-item ext-item';
+    ligne.dataset.cle = ext.cle;
+
+    const info = document.createElement('div');
+    info.className = 'plugin-info';
+
+    const titre = document.createElement('div');
+    titre.className = 'plugin-nom';
+    titre.textContent = ext.nom;
+
+    const detail = document.createElement('div');
+    detail.className = 'plugin-detail';
+    // Les deux chiffres comptent : ce qu'on telecharge, et l'espace
+    // qu'on y laisse — sur une machine a faible stockage, c'est le
+    // second qui decide
+    detail.textContent = ext.installee
+      ? ext.description + ' · ' + ext.disque_mo + ' Mo sur le disque'
+      : ext.description + ' · ' + ext.taille_mo + ' Mo à télécharger, '
+        + ext.disque_mo + ' Mo sur le disque';
+
+    const progres = document.createElement('div');
+    progres.className = 'update-progress ext-progress';
+    progres.hidden = true;
+    const piste = document.createElement('div');
+    piste.className = 'update-progress-track';
+    const barre = document.createElement('div');
+    barre.className = 'update-progress-bar';
+    piste.append(barre);
+    const label = document.createElement('span');
+    label.className = 'update-progress-label';
+    label.textContent = '0 %';
+    progres.append(piste, label);
+
+    info.append(titre, detail, progres);
+    ligne.append(info);
+
+    if (ext.installee) {
+      const badge = document.createElement('span');
+      badge.className = 'ext-badge';
+      badge.textContent = 'Installée';
+      ligne.append(badge);
+    } else {
+      const bouton = document.createElement('button');
+      bouton.className = 'btn-sub';
+      bouton.textContent = 'Installer';
+      bouton.disabled = extensionEnCours.has(ext.cle);
+      bouton.addEventListener('click', () => installExtension(ext, ligne));
+      ligne.append(bouton);
+    }
+
+    liste.append(ligne);
+  }
+}
+
+async function installExtension(ext, ligne) {
+  if (extensionEnCours.has(ext.cle)) return;
+  extensionEnCours.add(ext.cle);
+
+  const bouton = ligne.querySelector('button');
+  const progres = ligne.querySelector('.ext-progress');
+  const detail = ligne.querySelector('.plugin-detail');
+  bouton.disabled = true;
+  bouton.textContent = 'Téléchargement…';
+  progres.hidden = false;
+  detail.classList.remove('ext-echec');
+
+  // L'appel bloque jusqu'a la fin ; la progression arrive par
+  // evenements pendant ce temps
+  const resultat = await call('install_extension', ext.cle);
+  extensionEnCours.delete(ext.cle);
+
+  if (resultat && resultat.ok) {
+    await renderExtensions();
+    $('plugins-status').textContent = ext.nom + ' installée';
+    return;
+  }
+
+  progres.hidden = true;
+  bouton.disabled = false;
+  bouton.textContent = 'Réessayer';
+  detail.classList.add('ext-echec');
+  detail.textContent = (resultat && resultat.error)
+    || 'Installation impossible';
+}
+
+function onExtensionProgress(payload) {
+  const ligne = document.querySelector(
+    '.ext-item[data-cle="' + payload.cle + '"]');
+  if (!ligne) return;
+  const pct = Math.round((payload.progress || 0) * 100);
+  ligne.querySelector('.update-progress-bar').style.width = pct + '%';
+  ligne.querySelector('.update-progress-label').textContent = pct + ' %';
+  const bouton = ligne.querySelector('button');
+  if (bouton && pct >= 95) bouton.textContent = 'Installation…';
 }
 
 function closePluginsModal() {
@@ -585,21 +712,40 @@ async function refreshAiAvailability() {
 }
 
 function applyAiAvailability(available) {
+  // Pour les deux premieres, la raison est actionnable : un clic sur
+  // l'indice ouvre le panneau ou l'extension s'installe. Dire
+  // \u00ab necessite easyocr \u00bb a un utilisateur qui n'a pas pip ne l'aiderait
+  // en rien.
   const raisons = {
-    subtitles: 'N\u00e9cessite faster-whisper',
-    privacy_blur: 'N\u00e9cessite easyocr',
+    subtitles: 'Extension \u00e0 installer \u2014 cliquez ici',
+    privacy_blur: 'Extension \u00e0 installer \u2014 cliquez ici',
     summary: 'N\u00e9cessite un fournisseur IA et les sous-titres',
     subtitle_fix: 'N\u00e9cessite un fournisseur IA et les sous-titres',
   };
+  const installables = new Set(['subtitles', 'privacy_blur']);
   Object.entries(raisons).forEach(([cle, raison]) => {
     const wrapper = $('wrap-' + cle);
     const input = $(cle);
+    const hint = $('hint-' + cle);
     if (!wrapper || !input) return;
     if (available[cle]) {
       wrapper.classList.remove('disabled');
       input.disabled = false;
+      if (hint) {
+        hint.classList.remove('hint-action');
+        hint.onclick = null;
+      }
     } else {
       disable('wrap-' + cle, cle, 'hint-' + cle, raison);
+      if (hint && installables.has(cle)) {
+        hint.classList.add('hint-action');
+        // Affectation, pas addEventListener : cette fonction est
+        // rappelee a chaque rafraichissement et empilerait les ecouteurs
+        hint.onclick = (event) => {
+          event.preventDefault();
+          openPluginsModal();
+        };
+      }
     }
   });
 }

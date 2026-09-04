@@ -104,12 +104,36 @@ def installer_extension(cle: str,
             progress_cb(1.0)
         return {'ok': True}
     except Exception as e:
-        return {'ok': False, 'error': f"Installation impossible : {e}"}
+        return {'ok': False,
+                'error': f"Installation impossible : {_expliquer(e)}"}
     finally:
         # L'archive ne sert plus : la garder doublerait l'espace occupé,
         # et une archive corrompue ne doit pas rester à traîner
         if archive:
             _supprimer_sans_bruit(archive)
+
+
+def _expliquer(e: Exception) -> str:
+    """Traduit l'erreur en cause que l'utilisateur peut comprendre.
+
+    Le texte brut de requests (« 404 Client Error: Not Found for url:
+    https://… ») est exact mais n'indique aucune action. Vérifié dans
+    l'interface : c'est ce qui s'affichait.
+    """
+    try:
+        import requests
+    except ImportError:
+        return str(e)
+
+    if isinstance(e, requests.exceptions.HTTPError):
+        code = getattr(getattr(e, 'response', None), 'status_code', None)
+        if code == 404:
+            return "archive introuvable en ligne (pas encore publiée ?)"
+        return f"le serveur a répondu {code or 'une erreur'}"
+    if isinstance(e, (requests.exceptions.ConnectionError,
+                      requests.exceptions.Timeout)):
+        return "impossible de joindre le serveur — êtes-vous en ligne ?"
+    return str(e)
 
 
 def _deplier(archive: str, dossier: Path) -> None:

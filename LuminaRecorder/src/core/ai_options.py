@@ -17,6 +17,7 @@ où la dépendance était installée sans que cela ait d'effet.
 
 from utils.config_manager import ConfigManager
 from services.ocr_service import ocr_is_available
+from postprocess.subtitles_processor import whisper_is_available
 from filters.base import FrameFilter
 from plugins.loader import charger_plugin, lister_plugins
 from filters.privacy_blur_filter import PrivacyBlurFilter
@@ -129,14 +130,23 @@ class AIOptions:
         la chaîne, plutôt qu'ajoutés pour échouer au moment de s'exécuter.
         """
         procs = []
-        if options.get('subtitles'):
+        # Même règle que pour le flou OCR : sans moteur, pas de
+        # traitement voué à l'échec. Le cas concret est la migration
+        # depuis une version où Whisper était embarqué : le .ini garde
+        # subtitles = true, l'interface grise la case, et sans cette
+        # garde chaque enregistrement se terminerait par « Échec de
+        # l'export SRT » sans que l'utilisateur voie le rapport avec la
+        # case vide.
+        whisper = whisper_is_available()
+        if options.get('subtitles') and whisper:
             procs.append(SubtitlesProcessor())   # produit le .srt
 
         # Travaillent sur le .srt : juste après les sous-titres, et
-        # avant que Magic Cut ne redécoupe la vidéo
-        if options.get('subtitle_fix') and ai_engine is not None:
+        # avant que Magic Cut ne redécoupe la vidéo. Sans Whisper il n'y
+        # a pas de .srt, donc rien à corriger ni à résumer.
+        if options.get('subtitle_fix') and ai_engine is not None and whisper:
             procs.append(SubtitleFixProcessor(ai_engine))
-        if options.get('summary') and ai_engine is not None:
+        if options.get('summary') and ai_engine is not None and whisper:
             procs.append(SummaryProcessor(ai_engine))
 
         if options.get('magic_cut'):

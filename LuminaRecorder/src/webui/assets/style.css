@@ -1187,6 +1187,46 @@ body[data-state="pending"] .countdown { display: grid; }
 
 .plugin-erreur .plugin-detail { color: var(--rec); }
 
+/* Extensions officielles : même rangée que les plugins, mais l'action
+   est un bouton d'installation, pas un interrupteur */
+.modal-subhead {
+  margin: 14px 0 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.modal-subhead:first-of-type { margin-top: 0; }
+
+.ext-item .btn-sub { flex-shrink: 0; }
+
+.ext-badge {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--accent);
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+}
+
+.ext-progress { margin-top: 6px; }
+
+.ext-echec { color: var(--rec); }
+
+/* L'indice d'une case grisée devient un lien vers le panneau : la
+   raison du grisage est aussi la porte de sortie */
+.hint-action {
+  cursor: pointer;
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--accent) 40%, transparent);
+  text-underline-offset: 2px;
+}
+.hint-action:hover { text-decoration-color: var(--accent); }
+
 .plugin-vide {
   font-size: 12px;
   line-height: 1.5;

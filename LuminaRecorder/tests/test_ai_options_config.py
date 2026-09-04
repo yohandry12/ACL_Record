@@ -63,7 +63,8 @@ def test_privacy_blur_filter_skipped_without_ocr(monkeypatch):
     assert AIOptions.build_filters(opts) == []
 
 
-def test_build_postprocessors_order_subtitles_first():
+def test_build_postprocessors_order_subtitles_first(monkeypatch):
+    monkeypatch.setattr(ai_options, 'whisper_is_available', lambda: True)
     opts = {'privacy_blur': False, 'clean_canvas': False,
             'overlay': False, 'subtitles': True, 'magic_cut': True,
             'thumbnails': True}
@@ -71,6 +72,21 @@ def test_build_postprocessors_order_subtitles_first():
     assert isinstance(procs[0], SubtitlesProcessor)
     assert isinstance(procs[1], MagicCutProcessor)
     assert isinstance(procs[2], ThumbnailProcessor)
+
+
+def test_subtitles_skipped_without_whisper(monkeypatch):
+    """Cas de la migration : le .ini garde subtitles = true alors que
+    Whisper n'est plus embarqué. Sans cette garde, chaque enregistrement
+    finirait par « Échec de l'export SRT » — et les traitements qui
+    lisent le .srt échoueraient à leur tour sur un fichier absent."""
+    monkeypatch.setattr(ai_options, 'whisper_is_available', lambda: False)
+    opts = {'subtitles': True, 'subtitle_fix': True, 'summary': True,
+            'magic_cut': True}
+
+    procs = AIOptions.build_postprocessors(opts, ai_engine=object())
+
+    assert len(procs) == 1
+    assert isinstance(procs[0], MagicCutProcessor)
 
 
 def test_parse_max_silence_values():
