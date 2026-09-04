@@ -49,12 +49,16 @@ EXTENSIONS: Dict[str, dict] = {
     'ocr': {
         'nom': "Reconnaissance de texte",
         'description': "Flou de confidentialité et lecture du texte à l'écran",
-        'taille_mo': 450,
+        # Mesuré : 190 Mo à télécharger, 607 Mo une fois déplié.
+        # C'est PyTorch qui pèse ; rien ne permet de l'alléger sans
+        # casser easyocr.
+        'taille_mo': 190,
+        'disque_mo': 607,
         'modules': ['easyocr'],
         'version': "1.0",
         'archive': "lumina-ext-ocr-1.0.zip",
         'url': f"{DEPOT}/ext-1.0/lumina-ext-ocr-1.0.zip",
-        'taille_octets': 0,      # renseigné à la publication
+        'taille_octets': 199158062,
     },
 }
 
