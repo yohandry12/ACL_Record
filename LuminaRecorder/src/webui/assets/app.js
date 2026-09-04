@@ -103,7 +103,12 @@ window.luminaEvent = function (message) {
   }
   else if (event === 'error') setStatus(payload, 'error');
   else if (event === 'notice') setStatus(payload);
-  else if (event === 'done') showResult(payload);
+  else if (event === 'done') {
+    // La dernière étape ne pousse pas toujours 1.0 : sans cela la barre
+    // resterait figée juste avant la fin. Remise à 0 % au retour au repos.
+    $('progress-bar').style.width = '100%';
+    showResult(payload);
+  }
   else if (event === 'webcam_preview') onWebcamPreview(payload);
   else if (event === 'update_available') onUpdateAvailable(payload);
   else if (event === 'update_progress') onUpdateProgress(payload);
@@ -221,6 +226,8 @@ function feuilleOuverte() { return pile.length > 0; }
 function ouvrirFeuille(id) {
   const feuille = $(id);
   if (!feuille || pile.includes(id)) return;
+  // Une fermeture en cours masquerait la feuille qu'on vient de rouvrir
+  clearTimeout(feuille._fermeture);
   pile.push(id);
   $('voile').hidden = false;
   feuille.hidden = false;
@@ -233,9 +240,14 @@ function fermerFeuille() {
   if (!id) return;
   const feuille = $(id);
   feuille.classList.remove('ouverte');
-  const cacher = () => { feuille.hidden = true; feuille.removeEventListener('transitionend', cacher); };
+  const cacher = () => {
+    feuille.removeEventListener('transitionend', cacher);
+    // Rouverte entre-temps : ne pas la masquer
+    if (pile.includes(id)) return;
+    feuille.hidden = true;
+  };
   feuille.addEventListener('transitionend', cacher);
-  setTimeout(cacher, 260);           // repli si aucune transition (reduced-motion)
+  feuille._fermeture = setTimeout(cacher, 260);   // repli si aucune transition (reduced-motion)
   if (id === 'sheet-ai') $('ai-key').value = '';   // jamais une clé en clair dans le DOM
   if (!pile.length) $('voile').hidden = true;
 }
@@ -362,18 +374,38 @@ async function refreshCharge() {
   }
 }
 
-/* Pastilles et bouton Smart Focus : une bascule = un set_option */
-function bindPastille(id, key, disponible, raison) {
+/* Pastilles et bouton Smart Focus : une bascule = un set_option.
+ *
+ * Le câblage et l'état sont séparés : `bindPastille` est appelée une
+ * seule fois depuis wire(), `appliquerPastille` autant de fois que
+ * l'état est relu. Les mélanger empilerait un écouteur par relecture —
+ * un clic déclencherait alors plusieurs set_option contradictoires. */
+function bindPastille(id, key, inter) {
   const bouton = $(id);
-  if (!disponible) { bouton.disabled = true; bouton.title = raison; return; }
+  if (!bouton) return;
+  bouton.dataset.inter = inter;
+  // Mémorisé avant toute mise à jour : une pastille redevenue
+  // disponible doit retrouver son infobulle, pas garder la raison du
+  // grisage précédent
+  bouton.dataset.titre = bouton.title;
   bouton.addEventListener('click', async () => {
     const actif = bouton.getAttribute('aria-pressed') !== 'true';
     bouton.setAttribute('aria-pressed', String(actif));
     await call('set_option', key, actif);
     // L'interrupteur correspondant de la feuille suit
-    const inter = $(bouton.dataset.inter);
-    if (inter) inter.checked = actif;
+    const champ = $(bouton.dataset.inter);
+    if (champ) champ.checked = actif;
   });
+}
+
+/* Rejoue l'état d'une pastille : enfoncée ou non, et grisée avec sa
+ * raison quand le matériel ou la dépendance manque. */
+function appliquerPastille(id, actif, disponible, raison) {
+  const bouton = $(id);
+  if (!bouton) return;
+  bouton.setAttribute('aria-pressed', String(actif && disponible));
+  bouton.disabled = !disponible;
+  bouton.title = disponible ? (bouton.dataset.titre || '') : raison;
 }
 
 function populate(s) {
@@ -386,18 +418,15 @@ function populate(s) {
   $('countdown-format').textContent = `${s.resolution.replace('x', '×')} · ${s.fps} im/s · MP4`;
   $('widget-res').textContent = s.resolution.replace('x', '×');
 
-  $('pill-mic').setAttribute('aria-pressed', String(s.audio.mic_enabled && s.audio.devices.length > 0));
-  $('pill-system').setAttribute('aria-pressed', String(s.audio.system_enabled && s.audio.system_available));
-  $('pill-webcam').setAttribute('aria-pressed', String(s.webcam.enabled && s.webcam.available));
-  $('smart-focus-btn').setAttribute('aria-pressed', String(s.smart_focus.enabled && s.smart_focus.available));
-  $('pill-mic').dataset.inter = 'mic';
-  $('pill-system').dataset.inter = 'system-audio';
-  $('pill-webcam').dataset.inter = 'webcam-enabled';
-  $('smart-focus-btn').dataset.inter = 'smart-focus';
-  bindPastille('pill-mic', 'mic_enabled', s.audio.devices.length > 0, 'Aucun microphone détecté');
-  bindPastille('pill-system', 'system_audio', s.audio.system_available, 'Nécessite PyAudioWPatch');
-  bindPastille('pill-webcam', 'webcam_enabled', s.webcam.available, 'Aucune webcam détectée');
-  bindPastille('smart-focus-btn', 'smart_focus', s.smart_focus.available, 'Nécessite pywin32');
+  // État seulement : le câblage a eu lieu une fois dans wire()
+  appliquerPastille('pill-mic', s.audio.mic_enabled,
+    s.audio.devices.length > 0, 'Aucun microphone détecté');
+  appliquerPastille('pill-system', s.audio.system_enabled,
+    s.audio.system_available, 'Nécessite PyAudioWPatch');
+  appliquerPastille('pill-webcam', s.webcam.enabled,
+    s.webcam.available, 'Aucune webcam détectée');
+  appliquerPastille('smart-focus-btn', s.smart_focus.enabled,
+    s.smart_focus.available, 'Nécessite pywin32');
 
   populateSettings(s);     // tâche 4
 }
@@ -414,6 +443,12 @@ function wire() {
   $('open-settings').addEventListener('click', () => ouvrirFeuille('sheet-settings'));
   $('open-extensions').addEventListener('click', openExtensions);   // tâche 4
   $('update-pill').addEventListener('click', openUpdate);           // tâche 4
+
+  // Une seule fois : populate() ne fera plus que rejouer leur état
+  bindPastille('pill-mic', 'mic_enabled', 'mic');
+  bindPastille('pill-system', 'system_audio', 'system-audio');
+  bindPastille('pill-webcam', 'webcam_enabled', 'webcam-enabled');
+  bindPastille('smart-focus-btn', 'smart_focus', 'smart-focus');
 
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
