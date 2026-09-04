@@ -74,7 +74,10 @@ class WebcamOverlayFilter(FrameFilter):
         if cle not in self._cache:
             forme = np.zeros((cote, cote), np.uint8)
             if self.forme == 'rond':
-                cv2.circle(forme, (cote // 2, cote // 2), cote // 2 - 1, 255, -1)
+                # LINE_AA : bord anticrénelé, pour un fondu réel plutôt
+                # qu'une coupure nette pixel à pixel
+                cv2.circle(forme, (cote // 2, cote // 2), cote // 2 - 1, 255, -1,
+                           lineType=cv2.LINE_AA)
             elif self.forme == 'carre_arrondi':
                 r = max(4, cote // 6)
                 cv2.rectangle(forme, (r, 0), (cote - 1 - r, cote - 1), 255, -1)

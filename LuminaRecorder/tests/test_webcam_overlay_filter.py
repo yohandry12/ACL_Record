@@ -5,8 +5,9 @@ import time
 import numpy as np
 import pytest
 
-from filters.webcam_overlay_filter import (COINS, FORMES, TAILLES,
-                                           WebcamOverlayFilter)
+from filters.webcam_overlay_filter import (COINS, FORMES, OMBRE_DECALAGE,
+                                           OMBRE_OPACITE, OMBRE_RAYON,
+                                           TAILLES, WebcamOverlayFilter)
 
 
 class SourceFixe:
@@ -150,3 +151,59 @@ def test_le_cout_reste_sous_le_budget():
         flt.process(frame)
     moyenne_ms = (time.perf_counter() - debut) / n * 1000
     assert moyenne_ms < 2.5, f"{moyenne_ms:.2f} ms par image"
+
+
+@pytest.mark.parametrize('forme', FORMES)
+def test_les_masques_sont_complementaires(forme):
+    """masque + masque_inv == 1 partout, et l'ombre reste dans les bornes
+    d'opacité attendues : ça garantit que _masques() produit un vrai
+    mélange alpha (pas une coupure nette), indépendamment de la forme."""
+    flt = WebcamOverlayFilter(SourceFixe(image_webcam()), forme=forme)
+    masque, masque_inv, ombre_inv = flt._masques(168)
+    assert masque.dtype == np.float32
+    assert np.allclose(masque + masque_inv, 1.0)
+    assert np.all(ombre_inv >= 1.0 - OMBRE_OPACITE)
+    assert np.all(ombre_inv <= 1.0)
+
+
+def test_le_melange_est_progressif_sur_l_ombre():
+    """L'ombre est un flou gaussien : sous la vignette, l'assombrissement
+    doit décroître progressivement (plusieurs valeurs distinctes, jamais
+    plus sombre en s'éloignant) plutôt que s'arrêter net."""
+    flt = WebcamOverlayFilter(SourceFixe(image_webcam()), forme='carre',
+                              coin='haut-gauche')
+    frame = np.full((768, 1366, 3), 255, np.uint8)
+    x, y, cote = flt.zone(*frame.shape[:2])
+    sortie = flt.process(frame)
+
+    colonne = x + cote // 2
+    lignes = range(y + cote + 1, y + cote + OMBRE_RAYON + OMBRE_DECALAGE + 1)
+    valeurs = [int(sortie[ligne, colonne, 0]) for ligne in lignes]
+    assert valeurs[0] < 255, "l'ombre doit assombrir juste sous la vignette"
+    assert all(a <= b for a, b in zip(valeurs, valeurs[1:])), \
+        "l'assombrissement doit décroître en s'éloignant, jamais l'inverse"
+    assert len(set(valeurs)) >= 2, "un vrai fondu a plusieurs paliers"
+
+
+def test_le_rond_a_un_bord_anticrenele():
+    """Sur le pourtour du rond, un pixel à alpha partiel (ni fond pur, ni
+    vignette pure) prouve que le contour est mélangé, pas juste coupé net
+    au pixel près."""
+    flt = WebcamOverlayFilter(SourceFixe(image_webcam()), forme='rond',
+                              coin='haut-gauche', taille='moyenne')
+    frame = ecran()
+    x, y, cote = flt.zone(*frame.shape[:2])
+    masque, _, _ = flt._masques(cote)
+
+    ligne_mediane = cote // 2
+    valeurs_alpha = masque[ligne_mediane, :, 0]
+    idx = next((i for i, v in enumerate(valeurs_alpha) if 0.05 < v < 0.95),
+               None)
+    assert idx is not None, "le rond devrait avoir un bord anticrénelé"
+
+    sortie = flt.process(frame)
+    pixel = tuple(int(v) for v in sortie[y + ligne_mediane, x + idx])
+    assert pixel != (0, 0, 0), "pas le fond pur"
+    vignette = flt._vignette(image_webcam(), cote)
+    pixel_vignette = tuple(int(v) for v in vignette[ligne_mediane, idx])
+    assert pixel != pixel_vignette, "pas la vignette pure : un vrai mélange"
