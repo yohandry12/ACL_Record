@@ -140,6 +140,28 @@ def test_une_image_4_3_est_recadree_au_centre():
     assert tuple(sortie[y + cote // 2, x + cote - 5]) == (0, 0, 255)
 
 
+@pytest.mark.parametrize('coin', COINS)
+def test_une_image_trop_etroite_est_rendue_telle_quelle(coin):
+    """Image très allongée (1000×200) : le côté calculé sur la hauteur
+    dépasse la largeur, donc la vignette ne tient dans aucun coin. La
+    découpe serait plus petite que le masque et cv2.multiply lèverait :
+    on doit rendre l'image inchangée, sans exception, sinon la chaîne
+    désactiverait le filtre avec un avis « trop lent » trompeur."""
+    flt = WebcamOverlayFilter(SourceFixe(image_webcam()), coin=coin,
+                              taille='grande')
+    frame = ecran(1000, 200)
+    assert flt.process(frame) is frame
+    assert not frame.any()          # rien n'a été dessiné
+
+
+def test_une_image_minuscule_est_rendue_telle_quelle():
+    """20×20 : côté de 6 px, sous le minimum de 8 — rien à incruster."""
+    flt = WebcamOverlayFilter(SourceFixe(image_webcam()), taille='grande')
+    frame = ecran(20, 20)
+    assert flt.process(frame) is frame
+    assert not frame.any()
+
+
 def test_le_cout_reste_sous_le_budget():
     flt = WebcamOverlayFilter(SourceFixe(image_webcam()), taille='moyenne')
     frame = ecran()

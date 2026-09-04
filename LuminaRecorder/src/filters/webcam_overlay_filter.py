@@ -136,7 +136,12 @@ class WebcamOverlayFilter(FrameFilter):
 
         h, w = frame.shape[:2]
         x, y, cote = self.zone(h, w)
-        if cote < 8 or x < 0 or y < 0:
+        # Vignette trop petite, ou débordant d'un bord : sur une image
+        # très allongée (1000 de haut sur 200 de large par exemple), le
+        # côté calculé sur la hauteur dépasse la largeur. La découpe
+        # serait alors plus petite que le masque et cv2.multiply lèverait ;
+        # on rend plutôt l'image inchangée.
+        if cote < 8 or x < 0 or y < 0 or x + cote > w or y + cote > h:
             return frame
         masque, masque_inv, ombre_inv = self._masques(cote)
 
