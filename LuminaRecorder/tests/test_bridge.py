@@ -429,27 +429,82 @@ def test_annulation_pendant_le_decompte_ne_capture_rien(bridge):
     assert bridge.recorder.started_with is None
 
 
-def test_le_widget_apparait_des_le_decompte(bridge):
-    """Basculer au démarrage exact de la capture ferait sauter la
-    fenêtre dans l'enregistrement lui-même."""
+def test_la_fermeture_pendant_le_decompte_n_ouvre_aucune_capture(bridge,
+                                                                  monkeypatch):
+    """Fermer la fenêtre pendant le décompte ne doit pas laisser le
+    thread survivant lancer une capture sans fenêtre : sans la remise à
+    IDLE dans shutdown(), _countdown() voit encore PENDING et appelle
+    _launch(), qui démarre des boucles de minuterie et d'aperçu que plus
+    rien n'arrête."""
+    monkeypatch.setattr(bridge, 'COUNTDOWN_SECONDS', 1, raising=False)
+
+    bridge.start_recording()
+    bridge.shutdown()
+
+    time.sleep(1.5)   # laisse le décompte, non annulé, aller à son terme
+    assert bridge.recorder.started_with is None
+    assert bridge.state == IDLE
+
+
+def test_tailles_de_la_capsule_et_du_widget():
+    assert LuminaBridge.CAPSULE_SIZE == (440, 352)
+    assert LuminaBridge.COMPACT_SIZE == (360, 180)
+
+
+def test_le_decompte_se_joue_dans_la_capsule_sans_bouger(bridge):
+    """Le décompte reste là où l'utilisateur a posé sa capsule : rien
+    ne saute avant que la capture ne commence."""
     bridge.start_recording()
 
-    assert bridge._window.size == LuminaBridge.COMPACT_SIZE
+    assert bridge._window.size is None
+    assert bridge._window.on_top is False
 
 
-def test_le_widget_est_exclu_de_la_capture(bridge, monkeypatch):
-    """L'utilisateur voit le widget sur son écran, mais il ne doit pas
-    s'incruster dans la vidéo. L'exclusion s'active en basculant sur le
-    widget et se lève en revenant à la fenêtre pleine — sinon un autre
-    outil de capture ne pourrait plus jamais filmer Lumina."""
+def test_l_exclusion_de_capture_est_posee_des_le_decompte(bridge, monkeypatch):
+    """Visible pour l'utilisateur, absent de la vidéo. Posée dès le
+    décompte pour que la bascule vers le widget soit invisible, levée
+    au retour — sinon un autre outil ne pourrait plus filmer Lumina."""
     appels = []
     monkeypatch.setattr(bridge, '_set_capture_affinity', appels.append)
 
-    bridge.start_recording()        # bascule compacte dès le décompte
+    bridge.start_recording()
     assert appels == [True]
 
-    bridge.stop_recording()         # annulation pendant le décompte
+    bridge.stop_recording()          # annulation pendant le décompte
     assert appels == [True, False]
+
+
+def test_le_widget_remplace_la_capsule_pendant_la_capture(bridge, monkeypatch):
+    demarrer_sans_attendre(bridge, monkeypatch)
+
+    assert bridge._window.size == LuminaBridge.COMPACT_SIZE
+    assert bridge._window.on_top is True
+
+
+def test_les_coins_sont_arrondis_apres_chaque_redimensionnement(bridge,
+                                                                 monkeypatch):
+    rayons = []
+    monkeypatch.setattr(bridge, '_arrondir_coins', rayons.append)
+    demarrer_sans_attendre(bridge, monkeypatch)
+    bridge.stop_recording()
+    attendre(lambda: bridge.state == IDLE)
+
+    assert rayons == [22, 28]
+
+
+def test_arrondir_les_coins_sans_handle_ne_leve_pas(bridge):
+    bridge._arrondir_coins(28)       # FakeWindow n'a pas de .native
+
+
+def test_preparer_la_fenetre_lui_donne_sa_vraie_taille(bridge, monkeypatch):
+    """Mesuré : width=440,height=352 à la création donne 424×313 sur une
+    fenêtre sans cadre. On corrige une fois la fenêtre ouverte."""
+    rayons = []
+    monkeypatch.setattr(bridge, '_arrondir_coins', rayons.append)
+    bridge.preparer_fenetre()
+
+    assert bridge._window.size == LuminaBridge.CAPSULE_SIZE
+    assert rayons == [28]
 
 
 def test_le_tick_porte_duree_et_taille(bridge, monkeypatch):
@@ -490,7 +545,7 @@ def test_debit_analyse_avec_suffixes(bridge):
 class FakeWindowGeometry(FakeWindow):
     """Fenêtre déplaçable, pour vérifier la restauration de position."""
 
-    def __init__(self, x=120, y=60, width=900, height=600):
+    def __init__(self, x=120, y=60, width=440, height=352):
         super().__init__()
         self.x, self.y = x, y
         self.width, self.height = width, height
@@ -506,10 +561,9 @@ class FakeWindowGeometry(FakeWindow):
 
 def test_la_fenetre_retrouve_sa_place_apres_enregistrement(bridge,
                                                            monkeypatch):
-    """L'utilisateur avait déplacé sa fenêtre : la lui rendre collée au
+    """L'utilisateur avait déplacé sa capsule : la lui rendre collée au
     coin où se tenait le widget est un défaut visible à chaque capture."""
-    bridge._window = FakeWindowGeometry(x=120, y=60, width=900, height=600)
-    monkeypatch.setattr(bridge, '_set_native_frame', lambda visible: True)
+    bridge._window = FakeWindowGeometry(x=120, y=60, width=440, height=352)
     demarrer_sans_attendre(bridge, monkeypatch)
 
     assert bridge._window.size == LuminaBridge.COMPACT_SIZE
@@ -518,31 +572,16 @@ def test_la_fenetre_retrouve_sa_place_apres_enregistrement(bridge,
     assert attendre(lambda: bridge.state == IDLE)
 
     assert (bridge._window.x, bridge._window.y) == (120, 60)
-    assert (bridge._window.width, bridge._window.height) == (900, 600)
-
-
-def test_la_bordure_revient_apres_enregistrement(bridge, monkeypatch):
-    """Sans bordure, l'utilisateur ne peut plus ni déplacer ni
-    redimensionner sa fenêtre."""
-    bordures = []
-    bridge._window = FakeWindowGeometry()
-    monkeypatch.setattr(bridge, '_set_native_frame',
-                        lambda visible: bordures.append(visible) or True)
-    demarrer_sans_attendre(bridge, monkeypatch)
-    bridge.stop_recording()
-    attendre(lambda: bridge.state == IDLE)
-
-    assert bordures == [False, True]
+    assert (bridge._window.width, bridge._window.height) == (440, 352)
+    assert bridge._window.on_top is False
 
 
 def test_une_position_jamais_lue_ne_casse_pas_le_retour(bridge, monkeypatch):
-    """Fenêtre pas encore affichée : pas de position à restaurer, mais
-    l'enregistrement doit fonctionner quand même."""
-    monkeypatch.setattr(bridge, '_set_native_frame', lambda visible: True)
     demarrer_sans_attendre(bridge, monkeypatch)
     bridge.stop_recording()
 
     assert attendre(lambda: bridge.state == IDLE)
+    assert bridge._window.size == LuminaBridge.CAPSULE_SIZE
 
 
 # --- panneau de configuration IA ---

@@ -73,7 +73,6 @@ def run() -> int:
     from webui.bridge import LuminaBridge
 
     bridge = LuminaBridge()
-    full_w, full_h = LuminaBridge.full_size()
     index = assets_dir() / 'index.html'
     if not index.exists():
         print(f"[Lumina] Interface introuvable : {index}")
@@ -83,28 +82,27 @@ def run() -> int:
         'Lumina Recorder',
         url=str(index),
         js_api=bridge,
-        width=full_w,
-        height=full_h,
-        # Doit rester sous la taille du widget d'enregistrement : min_size
-        # est un plancher absolu que pywebview applique aussi à resize(),
-        # et un plancher trop haut donnait un widget de 840×540 qui
-        # masquait l'écran filmé. La taille confortable de la fenêtre est
-        # garantie par `width`/`height`, pas par ce plancher.
+        width=LuminaBridge.CAPSULE_SIZE[0],
+        height=LuminaBridge.CAPSULE_SIZE[1],
+        # Plancher = le widget : pywebview l'applique aussi à resize()
         min_size=LuminaBridge.COMPACT_SIZE,
-        background_color='#131417',
-        # Bordure native conservée : elle apporte le déplacement, le
-        # redimensionnement, l'ancrage Windows et l'agrandissement au
-        # double-clic. Une fenêtre sans bordure n'offre rien de tout cela,
-        # car « -webkit-app-region: drag » est une propriété Electron que
-        # WebView2 ignore. Le widget d'enregistrement retire la bordure
-        # le temps de la capture (voir LuminaBridge._set_native_frame).
-        frameless=False,
-        resizable=True,
-        easy_drag=True,       # déplace le widget, qui lui est sans bordure
+        background_color='#0D0E11',
+        # La capsule est la fenêtre : pas de cadre Windows. Le
+        # déplacement passe par les zones portant la classe
+        # pywebview-drag-region (voir index.html) — pas par easy_drag,
+        # qui saisirait aussi les boutons et les curseurs. Vérifié sur
+        # cette machine : « -webkit-app-region » est une propriété
+        # Electron que WebView2 ignore, la classe pywebview fonctionne.
+        frameless=True,
+        easy_drag=False,
+        resizable=False,
     )
     bridge._window = window
 
     def on_start():
+        # La taille de création est fausse sur une fenêtre sans cadre :
+        # corrigée ici, avec les coins arrondis
+        bridge.preparer_fenetre()
         # Le raccourci est enregistré une fois la fenêtre prête : son
         # état est ensuite lu par get_initial_state
         bridge.setup_hotkey()

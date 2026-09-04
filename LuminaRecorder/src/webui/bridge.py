@@ -73,34 +73,17 @@ class LuminaBridge:
     un enregistrement en cours.
     """
 
-    # Widget affiché pendant la capture (voir assets/Records_examples/
-    # record.webp) : durée, taille du fichier, arrêt.
-    COMPACT_SIZE = (340, 148)
+    # La capsule : fenêtre sans cadre, taille fixe, tient sur 1366×768
+    # comme sur 4K. Voir docs/superpowers/maquettes/capsule/Main.dc.html
+    CAPSULE_SIZE = (440, 352)
+    # Le widget pendant la capture : la capsule réduite
+    # (Widget.dc.html), en haut à droite, au-dessus de tout
+    COMPACT_SIZE = (360, 180)
+    RAYON_CAPSULE = 28
+    RAYON_WIDGET = 22
 
     # Décompte avant le début réel de la capture
     COUNTDOWN_SECONDS = 3
-
-    @staticmethod
-    def full_size() -> tuple:
-        """Taille de la fenêtre, ajustée à l'écran.
-
-        L'écran cible mesure 1366×768 : une fenêtre de taille fixe y
-        dépasserait sous la barre des tâches et couperait les panneaux du
-        bas. On prend une marge et on plafonne.
-        """
-        try:
-            import ctypes
-            user32 = ctypes.windll.user32
-            # SM_CXFULLSCREEN / SM_CYFULLSCREEN : zone utile, barre des
-            # tâches exclue
-            width = user32.GetSystemMetrics(16)
-            height = user32.GetSystemMetrics(17)
-            if width > 0 and height > 0:
-                return (min(1080, max(880, width - 60)),
-                        min(760, max(560, height - 40)))
-        except Exception:
-            pass
-        return (1000, 660)
 
     def __init__(self, config: Optional[ConfigManager] = None,
                  recorder_factory: Callable[..., RecorderCore] = RecorderCore,
@@ -139,7 +122,9 @@ class LuminaBridge:
         self._last_output = ""
         self._compact = False
         self._full_position = None
-        self._full_geometry = None
+        # Windows 11 applique les coins arrondis une fois pour toutes via
+        # DWM : inutile de répéter l'appel à chaque redimensionnement
+        self._dwm_arrondi = False
 
         # Mise à jour automatique. Les deux fonctions sont des attributs
         # pour que les tests les remplacent sans toucher au réseau.
@@ -187,59 +172,100 @@ class LuminaBridge:
                 print(f"[Lumina] Événement « {event} » non transmis : {e}")
 
     def _set_state(self, state: str):
+        # La bascule de fenêtre d'abord : un autre thread qui observe
+        # self.state (la minuterie, un appelant qui enchaîne aussitôt
+        # stop_recording) ne doit jamais voir un état déjà publié dont la
+        # fenêtre n'a pas fini de prendre la forme correspondante.
+        self._apply_window_mode(state)
         self.state = state
         self.emit('state', state)
-        self._apply_window_mode(state)
 
     def _apply_window_mode(self, state: str):
-        """Bascule entre fenêtre pleine et barre compacte.
+        """Capsule ou widget selon l'état.
 
-        Pendant la capture, la fenêtre pleine masquerait l'écran que l'on
-        filme ; la réduire complètement priverait l'utilisateur de tout
-        retour visuel et du bouton d'arrêt. La barre compacte, posée en
-        haut à droite et toujours au-dessus, résout les deux.
+        Pendant la capture, la capsule masquerait l'écran filmé ; la
+        réduire complètement priverait l'utilisateur du bouton d'arrêt.
+        Le widget, en haut à droite et toujours au-dessus, résout les
+        deux. Le décompte, lui, se joue dans la capsule là où elle est :
+        rien ne saute avant que la capture ne commence.
         """
         if self._window is None:
             return
-        # Le décompte s'affiche déjà dans le widget : basculer dès
-        # « pending » évite un saut de fenêtre au moment précis où la
-        # capture démarre, qui serait visible dans l'enregistrement.
-        compact_states = (PENDING, RECORDING)
         try:
-            if state in compact_states and not self._compact:
-                # Mémoriser où l'utilisateur avait placé sa fenêtre AVANT
+            if state == PENDING:
+                # Visible pour l'utilisateur, absent de la vidéo. Posée
+                # dès maintenant : la bascule vers le widget, une seconde
+                # plus tard, n'apparaîtra pas dans l'enregistrement.
+                self._set_capture_affinity(True)
+            elif state == RECORDING and not self._compact:
+                # Mémoriser où l'utilisateur avait posé sa capsule AVANT
                 # de la déplacer : sans cela, on la lui rendait collée au
                 # coin où se tenait le widget.
                 self._full_position = self._current_position()
-                self._full_geometry = self._current_size()
                 self._compact = True
                 self._window.on_top = True
-                # Le widget se passe de bordure : petit, arrondi, déplacé
-                # par easy_drag
-                self._set_native_frame(False)
-                # Visible pour l'utilisateur, absent de la vidéo : sans
-                # cela le widget s'incruste en haut à droite de chaque
-                # enregistrement
-                self._set_capture_affinity(True)
                 self._window.resize(*self.COMPACT_SIZE)
+                self._arrondir_coins(self.RAYON_WIDGET)
                 self._window.move(*self._compact_position())
-            elif state not in compact_states and self._compact:
-                self._compact = False
-                self._window.on_top = False
+            elif state in (IDLE, PROCESSING):
                 # Redevenir capturable : l'utilisateur peut vouloir
                 # filmer Lumina elle-même avec un autre outil
                 self._set_capture_affinity(False)
-                # Rendre la bordure : sans elle l'utilisateur ne peut ni
-                # déplacer ni redimensionner sa fenêtre
-                self._set_native_frame(True)
-                self._window.resize(*(self._full_geometry or self.full_size()))
-                if self._full_position:
-                    self._window.move(*self._full_position)
+                if self._compact:
+                    self._compact = False
+                    self._window.on_top = False
+                    self._window.resize(*self.CAPSULE_SIZE)
+                    self._arrondir_coins(self.RAYON_CAPSULE)
+                    if self._full_position:
+                        self._window.move(*self._full_position)
         except Exception as e:
             # Un échec de redimensionnement ne doit pas interrompre un
             # enregistrement : l'interface est secondaire par rapport à
             # la capture en cours
             print(f"[Lumina] Bascule de fenêtre impossible : {e}")
+
+    def preparer_fenetre(self):
+        """À appeler une fois la fenêtre ouverte.
+
+        Mesuré : `width=440, height=352` à la création donne 424×313 sur
+        une fenêtre sans cadre — pywebview retranche un cadre qui
+        n'existe pas. `resize()` après ouverture donne l'exact.
+        """
+        if self._window is None:
+            return
+        try:
+            self._window.resize(*self.CAPSULE_SIZE)
+        except Exception as e:
+            print(f"[Lumina] Taille de la capsule non appliquée : {e}")
+        self._arrondir_coins(self.RAYON_CAPSULE)
+
+    def _arrondir_coins(self, rayon: int):
+        """Coins arrondis d'une fenêtre sans cadre.
+
+        Windows 11 sait le faire seul (attribut DWM, une fois pour
+        toutes). Windows 10 non : on découpe la fenêtre par une région,
+        à refaire après chaque changement de taille. Mesuré sur build
+        19045 : SetWindowRgn rend 1, la fenêtre est bien arrondie.
+        Échec toléré : la capsule reste alors à angles droits.
+        """
+        try:
+            import ctypes
+            import sys
+            hwnd = int(self._window.native.Handle.ToInt64())
+            if sys.getwindowsversion().build >= 22000:
+                if not getattr(self, '_dwm_arrondi', False):
+                    # DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2
+                    pref = ctypes.c_int(2)
+                    ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                        hwnd, 33, ctypes.byref(pref), ctypes.sizeof(pref))
+                    self._dwm_arrondi = True
+                return
+            largeur, hauteur = int(self._window.width), int(self._window.height)
+            region = ctypes.windll.gdi32.CreateRoundRectRgn(
+                0, 0, largeur + 1, hauteur + 1, rayon * 2, rayon * 2)
+            ctypes.windll.user32.SetWindowRgn(hwnd, region, True)
+        except Exception:
+            pass
 
     # Valeurs de SetWindowDisplayAffinity (winuser.h)
     _WDA_NONE = 0x0
@@ -269,44 +295,6 @@ class LuminaBridge:
         except Exception:
             pass
 
-    def _set_native_frame(self, visible: bool):
-        """Affiche ou masque la bordure native de la fenêtre.
-
-        La fenêtre principale garde sa bordure Windows : elle apporte
-        gratuitement le déplacement, le redimensionnement, l'ancrage et
-        l'agrandissement au double-clic. Sans elle, il ne reste rien pour
-        manipuler la fenêtre — `-webkit-app-region: drag` est une
-        propriété Electron, que WebView2 ignore.
-
-        Le widget d'enregistrement, lui, s'en passe : il est petit,
-        arrondi, et `easy_drag` suffit à le déplacer.
-
-        Passe par l'objet WinForms interne à pywebview : sans équivalent
-        dans l'API publique. Un échec est sans conséquence — on garde la
-        bordure telle quelle plutôt que d'interrompre l'enregistrement.
-        """
-        try:
-            import clr  # noqa: F401
-            from System.Windows.Forms import FormBorderStyle
-
-            form = self._window.native
-            # getattr : « None » est un mot-clé Python, l'attribut ne
-            # peut pas être écrit FormBorderStyle.None
-            style = (FormBorderStyle.Sizable if visible
-                     else getattr(FormBorderStyle, 'None'))
-            # L'interface graphique n'appartient pas à ce thread : passer
-            # par Invoke, sinon WinForms lève une exception de thread
-            if form.InvokeRequired:
-                from System import Action
-                form.Invoke(Action(lambda: setattr(form, 'FormBorderStyle',
-                                                   style)))
-            else:
-                form.FormBorderStyle = style
-            return True
-        except Exception as e:
-            print(f"[Lumina] Bordure de fenêtre inchangée : {e}")
-            return False
-
     def _current_position(self):
         """Position actuelle de la fenêtre, ou None si illisible.
 
@@ -318,20 +306,6 @@ class LuminaBridge:
             # Une fenêtre pas encore affichée renvoie parfois 0,0 :
             # inutile de mémoriser une position qui n'a jamais existé
             return (x, y) if (x, y) != (0, 0) else None
-        except Exception:
-            return None
-
-    def _current_size(self):
-        """Taille actuelle de la fenêtre, ou None si illisible.
-
-        L'utilisateur a pu la redimensionner ; on la lui rend telle
-        quelle plutôt qu'à la taille calculée au démarrage.
-        """
-        try:
-            width, height = int(self._window.width), int(self._window.height)
-            if width < 200 or height < 200:
-                return None     # valeur aberrante ou fenêtre non prête
-            return (width, height)
         except Exception:
             return None
 
@@ -1357,6 +1331,11 @@ class LuminaBridge:
         session et le thread de capture survivrait à la fenêtre, laissant
         un .avi jamais finalisé.
         """
+        # Si la fenêtre se ferme pendant le décompte (état PENDING), le
+        # thread _countdown survivant doit voir IDLE et renoncer : sinon
+        # il appelle _launch(), qui démarre une capture sans fenêtre et
+        # des boucles de minuterie/aperçu que plus rien n'arrête.
+        self.state = IDLE
         if self.hotkey is not None:
             self.hotkey.stop()
         self._fermer_webcam()
