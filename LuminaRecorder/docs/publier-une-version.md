@@ -114,9 +114,25 @@ l'exécutable sans réinstallation.
 
 ## 3. La release GitHub
 
-Attacher `Lumina_Setup_x.y.z.exe` à une release taguée `vx.y.z`. Les
-installations existantes la détectent seules
-(`services/update_checker.py` interroge l'API des releases).
+Pousser la branche d'abord (le tag est posé sur sa tête distante), puis :
+
+```bash
+python publish_release.py ext-1.0 "Extensions officielles 1.0" notes_ext.md \
+    dist_extensions/lumina-ext-soustitres-1.0.zip dist_extensions/lumina-ext-ocr-1.0.zip
+
+python publish_release.py v1.4.0 "Lumina Recorder 1.4.0" notes_1.4.0.md \
+    dist_installer/Lumina_Setup_1.4.0.exe
+```
+
+Le script prend le token dans le gestionnaire d'identifiants git
+(`git credential fill`) et ne l'affiche jamais. Il est idempotent : une
+release existante est réutilisée, une pièce jointe de même nom est
+remplacée. Il relit la release à la fin et affiche les tailles reçues —
+à comparer à celles du catalogue pour les extensions.
+
+Les installations existantes détectent la nouvelle version seules
+(`services/update_checker.py` interroge l'API des releases et prend la
+pièce jointe dont le nom contient « setup » et finit par `.exe`).
 
 Le corps de la release sert de notes de version : il est affiché tel
 quel dans la fenêtre de mise à jour.
