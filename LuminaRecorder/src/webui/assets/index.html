@@ -7,331 +7,253 @@
 </head>
 <body data-state="idle">
 
-<!-- Fond animé : inspiré d'AeroShards, rendu en Canvas 2D. Gelé pendant
-     l'enregistrement pour ne pas voler de cycles à la capture. -->
-<canvas class="backdrop" id="backdrop" aria-hidden="true"></canvas>
+<!-- ============ CAPSULE (repos, décompte, traitement) ============ -->
+<div class="capsule" id="capsule">
 
-<!-- Widget d'enregistrement : seule chose visible pendant la capture.
-     Composition reprise de assets/Records_examples/record.webp —
-     durée dominante, taille du fichier, format, arrêt, forme d'onde. -->
-<div class="widget">
-  <div class="widget-top">
-    <span class="widget-state"><span class="dot"></span><span id="widget-label">Enregistrement</span></span>
-    <span class="widget-size" id="widget-size">0 Mo</span>
-  </div>
+  <!-- En-tête : marque, pastille de mise à jour, boutons. Tout ce qui
+       n'est pas un bouton est zone de saisie : sans cadre Windows, c'est
+       la seule façon de déplacer la fenêtre (classe écoutée par pywebview). -->
+  <header class="entete">
+    <div class="marque pywebview-drag-region"><span class="marque-point"></span>LUMINA</div>
+    <div class="entete-saisie pywebview-drag-region"></div>
+    <button class="pastille-maj" id="update-pill" hidden title="Une mise à jour est prête"></button>
+    <button class="rond rond-28" id="open-extensions" title="Extensions" aria-label="Extensions">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    </button>
+    <button class="rond rond-28" id="open-settings" title="Réglages" aria-label="Réglages">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <!-- Réduire et Fermer : ajoutés à la maquette, une fenêtre sans
+         cadre n'a plus ceux de Windows -->
+    <button class="rond rond-24 fenetre" id="minimize" title="Réduire" aria-label="Réduire">
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+    <button class="rond rond-24 fenetre" id="close" title="Fermer" aria-label="Fermer">
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+  </header>
 
-  <div class="widget-time">
-    <span id="widget-timer">00:00</span><sup id="widget-hours"></sup>
-  </div>
-
-  <div class="widget-bottom">
-    <span class="widget-format" id="widget-format">MP4</span>
-    <div class="widget-actions">
-      <button id="widget-stop" title="Arrêter (F9)" aria-label="Arrêter">
-        <svg width="13" height="13" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>
-      </button>
-    </div>
-  </div>
-
-  <canvas class="widget-wave" id="widget-wave" width="600" height="72"></canvas>
-
-  <!-- Décompte : recouvre le widget avant le début réel de la capture -->
-  <div class="countdown" id="countdown"><span id="countdown-value">3</span></div>
-</div>
-
-<!-- La fenêtre garde sa barre de titre Windows (déplacement,
-     redimensionnement, ancrage) : cet en-tête ne duplique pas ses
-     boutons, il identifie seulement l'application. -->
-<header class="titlebar">
-  <div class="brand"><span class="brand-dot"></span>LUMINA</div>
-  <div class="titlebar-spacer"></div>
-  <!-- Version : simple mention en temps normal, pastille de mise à
-       jour cliquable quand une release plus récente est publiée -->
-  <button class="titlebar-action" id="open-plugins" title="Extensions et plugins">Extensions</button>
-  <button class="version-tag" id="version-tag" title="Version installée">v—</button>
-  <span class="profile-tag" id="profile">—</span>
-</header>
-
-<section class="stage">
-  <button class="record-btn" id="record">
-    <span class="dot"></span>
-    <span id="record-label">COMMENCER L'ENREGISTREMENT</span>
-  </button>
-  <div class="meta">
-    <span class="hotkey-badge" id="hotkey">F9</span>
-    <span id="hotkey-note">fonctionne en arrière-plan</span>
-  </div>
-  <div class="timer" id="timer">00:00:00</div>
-  <div class="status" id="status">Prêt à enregistrer</div>
-</section>
-
-<div class="progress-wrap">
-  <div class="progress-step" id="progress-step">Traitement…</div>
-  <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
-</div>
-
-<div class="result" id="result">
-  <span style="color:var(--ok)">✓</span>
-  <span class="path" id="result-path"></span>
-  <button class="btn-sub" style="width:auto;padding:4px 10px" id="open-folder">Ouvrir</button>
-</div>
-
-<main class="panels">
-
-  <section class="panel">
-    <h2>Vidéo</h2>
-    <div class="field">
-      <label for="resolution">Résolution</label>
-      <select id="resolution">
-        <option value="854x480">854×480 (SD)</option>
-        <option value="1280x720">1280×720 (HD)</option>
-        <option value="1920x1080">1920×1080 (Full HD)</option>
-        <option value="2560x1440">2560×1440 (2K)</option>
-        <option value="3840x2160">3840×2160 (4K)</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="bitrate">Débit</label>
-      <select id="bitrate">
-        <option value="2500k">2500k — léger</option>
-        <option value="5000k">5000k — équilibré</option>
-        <option value="8000k">8000k — élevé</option>
-        <option value="15000k">15000k — maximal</option>
-      </select>
-    </div>
-
-    <label class="check" id="wrap-smart-focus">
-      <input type="checkbox" id="smart-focus">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Smart Focus</span>
-        <span class="check-hint">N'enregistre que la fenêtre active.
-          Cliquez sur la fenêtre à filmer pendant le décompte.</span>
-      </span>
-    </label>
-
-    <div class="field">
-      <label>Dossier de sortie</label>
-      <button class="btn-sub" id="folder" title="">—</button>
+  <!-- Scène : chrono géant et statut (repos, traitement) -->
+  <section class="scene pywebview-drag-region">
+    <div class="chrono" id="timer">00:00</div>
+    <div class="statut-ligne">
+      <span class="statut" id="status">Prêt à enregistrer</span>
+      <span class="puce-touche" id="hotkey">F9</span>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Audio</h2>
-
-    <label class="check">
-      <input type="checkbox" id="mic">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text"><span class="check-label">Microphone</span></span>
-    </label>
-
-    <select id="device" aria-label="Microphone"></select>
-
-    <label class="check" id="wrap-system-audio">
-      <input type="checkbox" id="system-audio">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Son système</span>
-        <span class="check-hint">Ce que jouent les haut-parleurs</span>
-      </span>
-    </label>
-
-    <div class="field">
-      <label for="gain">Volume d'entrée · <span id="gain-value">0.5</span>×</label>
-      <input type="range" id="gain" min="0.1" max="2" step="0.1" value="0.5">
-      <div class="range-row"><span>0.1</span><span>1.0</span><span>2.0</span></div>
-    </div>
+  <!-- Décompte : anneau à la place du chrono -->
+  <section class="decompte" id="countdown">
+    <div class="anneau"><span id="countdown-value">3</span></div>
+    <div class="decompte-texte">La capture commence</div>
   </section>
 
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Intelligence artificielle</h2>
-      <button class="link-btn" id="open-ai-config">Fournisseur…</button>
-    </div>
-    <div class="provider-line" id="provider-line"></div>
-    <div class="charge-warning" id="charge-warning" hidden></div>
-
-    <label class="check" id="wrap-privacy_blur">
-      <input type="checkbox" id="privacy_blur">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Flou de confidentialité</span>
-        <span class="check-hint" id="hint-privacy_blur">Masque le texte sensible</span>
-      </span>
-    </label>
-
-    <label class="check">
-      <input type="checkbox" id="clean_canvas">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Masquer les notifications</span>
-      </span>
-    </label>
-
-    <label class="check">
-      <input type="checkbox" id="overlay">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Afficher les métriques</span>
-      </span>
-    </label>
-
-    <label class="check" id="wrap-subtitles">
-      <input type="checkbox" id="subtitles">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Sous-titres automatiques</span>
-        <span class="check-hint" id="hint-subtitles">Transcription de la piste audio</span>
-      </span>
-    </label>
-
-    <label class="check">
-      <input type="checkbox" id="magic_cut">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Couper les silences jusqu'à</span>
-      </span>
-    </label>
-
-    <div class="indent field">
-      <select id="magic_cut_max">
-        <option>1 s</option><option>2 s</option><option>3 s</option>
-        <option>5 s</option><option>10 s</option><option>30 s</option>
-        <option>Tous</option>
-      </select>
-      <span class="check-hint">« Tous » coupe aussi les longues pauses,
-        par exemple le temps de lancer une vidéo.</span>
-    </div>
-
-    <label class="check indent">
-      <input type="checkbox" id="delete_original">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Supprimer l'original après découpe</span>
-      </span>
-    </label>
-
-    <label class="check" id="wrap-subtitle_fix">
-      <input type="checkbox" id="subtitle_fix">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Corriger les sous-titres</span>
-        <span class="check-hint" id="hint-subtitle_fix">Ponctuation, noms propres, termes techniques</span>
-      </span>
-    </label>
-
-    <label class="check" id="wrap-summary">
-      <input type="checkbox" id="summary">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Résumé de l'enregistrement</span>
-        <span class="check-hint" id="hint-summary">Points clés et mots-clés, dans un .md</span>
-      </span>
-    </label>
-
-    <label class="check">
-      <input type="checkbox" id="thumbnails">
-      <span class="box"><svg viewBox="0 0 12 12"><path d="M1 6l3.5 3.5L11 2.5"/></svg></span>
-      <span class="check-text">
-        <span class="check-label">Miniatures</span>
-        <span class="check-hint">3 propositions à partir des meilleures images</span>
-      </span>
-    </label>
-  </section>
-
-</main>
-
-<!-- Configuration du fournisseur IA -->
-<div class="modal" id="ai-modal" hidden>
-  <div class="modal-card">
-    <div class="modal-head">
-      <h3>Fournisseur d'intelligence artificielle</h3>
-      <button class="modal-close" id="ai-close" aria-label="Fermer">✕</button>
-    </div>
-
-    <p class="modal-note" id="ai-privacy"></p>
-
-    <div class="field">
-      <label for="ai-provider">Fournisseur</label>
-      <select id="ai-provider"></select>
-    </div>
-
-    <div class="field">
-      <label for="ai-model">Modèle</label>
-      <input type="text" id="ai-model" spellcheck="false" autocomplete="off">
-      <span class="check-hint" id="ai-model-hint"></span>
-    </div>
-
-    <div class="field" id="ai-key-field">
-      <label for="ai-key">Clé API</label>
-      <input type="password" id="ai-key" spellcheck="false"
-             autocomplete="off" placeholder="Collez votre clé">
-      <span class="check-hint">Enregistrée dans le gestionnaire
-        d'identifiants Windows, jamais dans un fichier.</span>
-    </div>
-
-    <div class="modal-actions">
-      <span class="modal-status" id="ai-status"></span>
-      <button class="btn-sub" id="ai-test">Tester</button>
-      <button class="btn-primary" id="ai-save">Enregistrer</button>
-    </div>
+  <!-- Onde au repos, ou progression pendant le traitement -->
+  <div class="onde-repos" id="onde-repos" aria-hidden="true"></div>
+  <div class="progression" id="progress">
+    <div class="progression-etape" id="progress-step">Traitement…</div>
+    <div class="progression-piste"><div class="progression-barre" id="progress-bar"></div></div>
   </div>
-</div>
 
-<!-- Mise à jour disponible -->
-<div class="modal" id="update-modal" hidden>
-  <div class="modal-card">
-    <div class="modal-head">
-      <h3>Mise à jour <span id="update-version"></span></h3>
-      <button class="modal-close" id="update-close" aria-label="Fermer">✕</button>
+  <!-- Commandes -->
+  <div class="commandes">
+    <button class="rond rond-46" id="open-folder" title="Ouvrir le dossier des vidéos" aria-label="Ouvrir le dossier des vidéos">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    </button>
+    <button class="rec" id="record" title="Commencer l'enregistrement (F9)" aria-label="Commencer l'enregistrement"><span class="rec-coeur"></span></button>
+    <button class="rond rond-46 bascule" id="smart-focus-btn" title="Smart Focus : n'enregistre que la fenêtre active" aria-label="Smart Focus" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+    </button>
+  </div>
+
+  <!-- Pastilles : bascules rapides -->
+  <div class="pastilles">
+    <button class="pastille" id="pill-mic" aria-pressed="false">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Micro
+    </button>
+    <button class="pastille" id="pill-system" aria-pressed="false">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></svg>Son système
+    </button>
+    <button class="pastille" id="pill-webcam" aria-pressed="false">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3z"/></svg>Webcam
+    </button>
+  </div>
+
+  <!-- Pied du décompte -->
+  <div class="decompte-pied">
+    <span id="countdown-webcam"><span class="point-ok"></span>Webcam prête</span>
+    <span id="countdown-format">1280×720 · 30 im/s · MP4</span>
+  </div>
+
+  <!-- ============ FEUILLES ============ -->
+  <div class="voile" id="voile" hidden></div>
+
+  <section class="feuille" id="sheet-settings" hidden>
+    <div class="poignee pywebview-drag-region"><span></span></div>
+    <div class="feuille-entete">
+      <h3>Réglages</h3>
+      <nav class="onglets" id="onglets">
+        <button data-tab="capture" class="actif">Capture</button>
+        <button data-tab="audio">Audio</button>
+        <button data-tab="webcam">Webcam</button>
+        <button data-tab="ia">IA</button>
+      </nav>
     </div>
+    <div class="feuille-corps">
 
-    <p class="modal-note">Une nouvelle version de Lumina est disponible.
-      Vos réglages et vos clés API seront conservés.</p>
-
-    <div class="update-notes" id="update-notes" hidden></div>
-
-    <div class="update-progress" id="update-progress" hidden>
-      <div class="update-progress-track">
-        <div class="update-progress-bar" id="update-progress-bar"></div>
+      <div class="onglet" id="tab-capture">
+        <div class="ligne"><span class="lib">Résolution</span>
+          <select id="resolution">
+            <option value="854x480">854×480</option><option value="1280x720">1280×720</option>
+            <option value="1920x1080">1920×1080</option><option value="2560x1440">2560×1440</option>
+            <option value="3840x2160">3840×2160</option>
+          </select></div>
+        <div class="ligne"><span class="lib">Débit</span>
+          <select id="bitrate">
+            <option value="2500k">2500k — léger</option><option value="5000k">5000k — équilibré</option>
+            <option value="8000k">8000k — élevé</option><option value="15000k">15000k — maximal</option>
+          </select></div>
+        <div class="ligne"><span class="lib">Smart Focus<span class="sous" id="smart-focus-hint">N'enregistre que la fenêtre active</span></span>
+          <label class="inter"><input type="checkbox" id="smart-focus"><span></span></label></div>
+        <div class="ligne"><span class="lib">Dossier de sortie</span>
+          <button class="liste" id="folder" title="">—</button></div>
+        <div class="ligne"><span class="lib">Raccourci<span class="sous" id="hotkey-note">fonctionne en arrière-plan</span></span>
+          <span class="puce-touche" id="hotkey-settings">F9</span></div>
       </div>
-      <span class="update-progress-label" id="update-progress-label">0 %</span>
-    </div>
 
-    <div class="modal-actions">
-      <span class="modal-status" id="update-status"></span>
-      <button class="btn-sub" id="update-later">Plus tard</button>
-      <button class="btn-primary" id="update-install">
-        Installer <span id="update-size"></span>
-      </button>
+      <div class="onglet" id="tab-audio" hidden>
+        <div class="ligne"><span class="lib">Microphone</span>
+          <label class="inter"><input type="checkbox" id="mic"><span></span></label></div>
+        <div class="ligne"><span class="lib">Entrée</span>
+          <select id="device" aria-label="Microphone"></select></div>
+        <div class="ligne"><span class="lib">Son système<span class="sous" id="system-audio-hint">Ce que jouent les haut-parleurs</span></span>
+          <label class="inter"><input type="checkbox" id="system-audio"><span></span></label></div>
+        <div class="ligne"><span class="lib">Volume d'entrée · <span id="gain-value">0.5</span>×</span>
+          <input type="range" id="gain" min="0.1" max="2" step="0.1" value="0.5"></div>
+      </div>
+
+      <div class="onglet" id="tab-webcam" hidden>
+        <div class="ligne"><span class="lib">Incruster mon visage<span class="sous" id="webcam-hint">Désactivé par défaut, jamais sans votre choix</span></span>
+          <label class="inter"><input type="checkbox" id="webcam-enabled"><span></span></label></div>
+        <div class="ligne"><span class="lib">Caméra</span>
+          <select id="webcam-device"></select></div>
+        <div class="ligne"><span class="lib">Forme</span>
+          <div class="seg" id="webcam-forme">
+            <button data-value="rond" title="Rond"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="8"/></svg></button>
+            <button data-value="carre_arrondi" title="Carré arrondi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="4" width="16" height="16" rx="5"/></svg></button>
+            <button data-value="carre" title="Carré"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></button>
+          </div></div>
+        <div class="ligne"><span class="lib">Coin</span>
+          <div class="coins" id="webcam-coin">
+            <button data-value="haut-gauche" title="Haut gauche"></button><button data-value="haut-droite" title="Haut droite"></button>
+            <button data-value="bas-gauche" title="Bas gauche"></button><button data-value="bas-droite" title="Bas droite"></button>
+          </div></div>
+        <div class="ligne"><span class="lib">Taille</span>
+          <div class="seg" id="webcam-taille">
+            <button data-value="petite">Petite</button><button data-value="moyenne">Moyenne</button><button data-value="grande">Grande</button>
+          </div></div>
+        <div class="ligne haute">
+          <span class="lib avec-inter">Miroir <label class="inter"><input type="checkbox" id="webcam-miroir"><span></span></label></span>
+          <span class="tester">
+            <button class="bouton" id="webcam-test">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3z"/></svg>Tester
+            </button>
+            <span class="apercu forme-rond" id="webcam-preview" title="Aperçu 2 s, dans la forme choisie"></span>
+          </span>
+        </div>
+      </div>
+
+      <div class="onglet" id="tab-ia" hidden>
+        <div class="ligne"><span class="lib">Fournisseur<span class="sous" id="provider-line"></span></span>
+          <button class="bouton" id="open-ai-config">Configurer…</button></div>
+        <div class="avertissement" id="charge-warning" hidden></div>
+        <div class="ligne" id="wrap-privacy_blur"><span class="lib">Flou de confidentialité<span class="sous" id="hint-privacy_blur">Masque le texte sensible</span></span>
+          <label class="inter"><input type="checkbox" id="privacy_blur"><span></span></label></div>
+        <div class="ligne"><span class="lib">Masquer les notifications</span>
+          <label class="inter"><input type="checkbox" id="clean_canvas"><span></span></label></div>
+        <div class="ligne"><span class="lib">Afficher les métriques</span>
+          <label class="inter"><input type="checkbox" id="overlay"><span></span></label></div>
+        <div class="ligne" id="wrap-subtitles"><span class="lib">Sous-titres automatiques<span class="sous" id="hint-subtitles">Transcription de la piste audio</span></span>
+          <label class="inter"><input type="checkbox" id="subtitles"><span></span></label></div>
+        <div class="ligne"><span class="lib">Couper les silences jusqu'à</span>
+          <span class="avec-inter"><select id="magic_cut_max" class="court">
+            <option>1 s</option><option>2 s</option><option>3 s</option><option>5 s</option>
+            <option>10 s</option><option>30 s</option><option>Tous</option></select>
+          <label class="inter"><input type="checkbox" id="magic_cut"><span></span></label></span></div>
+        <div class="ligne retrait"><span class="lib">Supprimer l'original après découpe</span>
+          <label class="inter"><input type="checkbox" id="delete_original"><span></span></label></div>
+        <div class="ligne" id="wrap-subtitle_fix"><span class="lib">Corriger les sous-titres<span class="sous" id="hint-subtitle_fix">Ponctuation, noms propres, termes techniques</span></span>
+          <label class="inter"><input type="checkbox" id="subtitle_fix"><span></span></label></div>
+        <div class="ligne" id="wrap-summary"><span class="lib">Résumé de l'enregistrement<span class="sous" id="hint-summary">Points clés et mots-clés, dans un .md</span></span>
+          <label class="inter"><input type="checkbox" id="summary"><span></span></label></div>
+        <div class="ligne"><span class="lib">Miniatures<span class="sous">3 propositions à partir des meilleures images</span></span>
+          <label class="inter"><input type="checkbox" id="thumbnails"><span></span></label></div>
+      </div>
+
     </div>
-  </div>
+    <div class="feuille-pied"><span id="version-tag">v—</span><span id="profile"></span></div>
+  </section>
+
+  <section class="feuille" id="sheet-extensions" hidden>
+    <div class="poignee pywebview-drag-region"><span></span></div>
+    <div class="feuille-entete"><h3>Extensions</h3><button class="feuille-fermer" aria-label="Fermer">✕</button></div>
+    <div class="feuille-corps">
+      <div class="titre">FONCTIONS OFFICIELLES</div>
+      <p class="note">Trop lourdes pour être livrées avec l'application, elles s'installent ici à la demande. Rien n'est téléchargé sans que vous l'ayez demandé.</p>
+      <div class="plugin-list" id="extension-list"></div>
+      <div class="titre">PLUGINS</div>
+      <p class="note">Les plugins s'exécutent avec les droits de l'application et voient l'image de votre écran : n'activez que ceux dont vous connaissez l'origine.</p>
+      <div class="plugin-list" id="plugin-list"></div>
+      <div class="actions"><span class="etat-action" id="plugins-status"></span><button class="bouton" id="plugins-folder">Ouvrir le dossier</button></div>
+    </div>
+  </section>
+
+  <section class="feuille" id="sheet-ai" hidden>
+    <div class="poignee pywebview-drag-region"><span></span></div>
+    <div class="feuille-entete"><h3>Fournisseur d'intelligence artificielle</h3><button class="feuille-fermer" aria-label="Fermer">✕</button></div>
+    <div class="feuille-corps">
+      <p class="note" id="ai-privacy"></p>
+      <div class="ligne"><span class="lib">Fournisseur</span><select id="ai-provider"></select></div>
+      <div class="ligne"><span class="lib">Modèle<span class="sous" id="ai-model-hint"></span></span><input type="text" id="ai-model" spellcheck="false" autocomplete="off"></div>
+      <div class="ligne" id="ai-key-field"><span class="lib">Clé API<span class="sous">Enregistrée dans le gestionnaire d'identifiants Windows, jamais dans un fichier.</span></span>
+        <input type="password" id="ai-key" spellcheck="false" autocomplete="off" placeholder="Collez votre clé"></div>
+      <div class="actions"><span class="etat-action" id="ai-status"></span><button class="bouton" id="ai-test">Tester</button><button class="bouton primaire" id="ai-save">Enregistrer</button></div>
+    </div>
+  </section>
+
+  <section class="feuille" id="sheet-update" hidden>
+    <div class="poignee pywebview-drag-region"><span></span></div>
+    <div class="feuille-entete"><h3>Mise à jour <span id="update-version"></span></h3><button class="feuille-fermer" aria-label="Fermer">✕</button></div>
+    <div class="feuille-corps">
+      <p class="note">Une nouvelle version de Lumina est disponible. Vos réglages et vos clés API seront conservés.</p>
+      <div class="update-notes" id="update-notes" hidden></div>
+      <div class="progression" id="update-progress" hidden>
+        <div class="progression-piste"><div class="progression-barre" id="update-progress-bar"></div></div>
+        <span class="progression-etape" id="update-progress-label">0 %</span>
+      </div>
+      <div class="actions"><span class="etat-action" id="update-status"></span><button class="bouton" id="update-later">Plus tard</button><button class="bouton primaire" id="update-install">Installer <span id="update-size"></span></button></div>
+    </div>
+  </section>
+
 </div>
 
-<!-- Extensions et plugins -->
-<div class="modal" id="plugins-modal" hidden>
-  <div class="modal-card">
-    <div class="modal-head">
-      <h3>Extensions</h3>
-      <button class="modal-close" id="plugins-close" aria-label="Fermer">&#10005;</button>
+<!-- ============ WIDGET (enregistrement) ============ -->
+<div class="widget" id="widget">
+  <div class="widget-haut">
+    <div class="widget-infos">
+      <div class="widget-etat pywebview-drag-region"><span class="point-rec"></span><span id="widget-label">Enregistrement</span></div>
+      <div class="widget-chrono pywebview-drag-region"><b id="widget-timer">00:00</b><sup id="widget-hours"></sup></div>
+      <div class="widget-meta"><span id="widget-format">MP4</span><span>·</span><span id="widget-res">1280×720</span><span>·</span><span class="puce-taille" id="widget-size">≈ 0 Mo</span></div>
     </div>
-
-    <h4 class="modal-subhead">Fonctions officielles</h4>
-    <p class="modal-note">Trop lourdes pour être livrées avec
-      l'application, elles s'installent ici à la demande. Rien n'est
-      téléchargé sans que vous l'ayez demandé.</p>
-    <div class="plugin-list" id="extension-list"></div>
-
-    <h4 class="modal-subhead">Plugins</h4>
-    <p class="modal-note">Les plugins ajoutent des fonctions à Lumina.
-      Ils s'exécutent avec les droits de l'application et voient l'image
-      de votre écran : n'activez que ceux dont vous connaissez
-      l'origine.</p>
-    <div class="plugin-list" id="plugin-list"></div>
-
-    <div class="modal-actions">
-      <span class="modal-status" id="plugins-status"></span>
-      <button class="btn-sub" id="plugins-folder">Ouvrir le dossier</button>
+    <div class="vignette" id="widget-cam" hidden title="Aperçu webcam (invisible dans la vidéo)"><img id="widget-cam-img" alt=""></div>
+  </div>
+  <div class="bande">
+    <canvas class="widget-wave" id="widget-wave" width="480" height="44"></canvas>
+    <div class="bande-boutons">
+      <button class="bande-bouton" id="widget-pause" disabled title="Pause — bientôt" aria-label="Pause">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+      </button>
+      <button class="bande-bouton arret" id="widget-stop" title="Arrêter (F9)" aria-label="Arrêter"><span></span></button>
     </div>
   </div>
 </div>
