@@ -157,6 +157,10 @@ class LuminaBridge:
         # Drapeau d'arrêt du thread d'aperçu, créé au démarrage de
         # celui-ci et levé par _fermer_webcam
         self._apercu_arret = None
+        # Sérialise l'ouverture de la caméra : test_webcam et
+        # _ouvrir_webcam (appelé depuis le raccourci global, donc depuis
+        # un autre thread) ne doivent pas ouvrir le pilote en même temps
+        self._webcam_lock = threading.Lock()
 
         self._purge_temp_files()
 
@@ -883,7 +887,8 @@ class LuminaBridge:
         filtre à placer en fin de chaîne, ou None.
 
         Appelé AVANT la construction du recorder, donc avant le décompte :
-        l'ouverture prend jusqu'à 3 s, le décompte les couvre. Un échec
+        l'ouverture mesurée est d'environ 1 s en DirectShow (≈ 2,4 s dans
+        le repli Media Foundation), le décompte de 3 s la couvre. Un échec
         ici ne bloque jamais l'enregistrement : on continue sans vignette.
         """
         self._webcam_perdue_signalee = False
@@ -891,8 +896,12 @@ class LuminaBridge:
         if not options['enabled']:
             return None
         try:
-            self._webcam = self._webcam_factory(device_index=options['device'])
-            self._webcam.start()
+            # Sous verrou : test_webcam ne doit pas ouvrir le pilote entre
+            # la fabrique et le start()
+            with self._webcam_lock:
+                self._webcam = self._webcam_factory(
+                    device_index=options['device'])
+                self._webcam.start()
             return WebcamOptions.build_filter(options, self._webcam)
         except Exception as e:
             print(f"[Lumina] Webcam non ouverte : {e}")
@@ -945,7 +954,13 @@ class LuminaBridge:
                     and self._webcam is source):
                 image = source.latest()
                 if image is None:
-                    if source.erreur and not self._webcam_perdue_signalee:
+                    # `self._apercu_arret is arret` : un thread d'aperçu
+                    # d'une session précédente, encore en train de finir,
+                    # ne doit pas émettre l'avis de la session en cours —
+                    # sinon « Webcam perdue » pourrait apparaître deux
+                    # fois alors que la spécification en demande une.
+                    if (source.erreur and not self._webcam_perdue_signalee
+                            and self._apercu_arret is arret):
                         self._webcam_perdue_signalee = True
                         self.emit('notice', "Webcam perdue, enregistrement "
                                             "poursuivi sans elle")
@@ -996,11 +1011,24 @@ class LuminaBridge:
                     'error': "Webcam occupée par l'enregistrement"}
         source = None
         try:
-            source = self._webcam_factory(device_index=int(index))
-            source.start()
+            # Vérification de l'état et ouverture sous le même verrou que
+            # _ouvrir_webcam : le raccourci global tourne dans son propre
+            # thread et pourrait lancer un enregistrement entre les deux,
+            # laissant deux sources sur la même caméra — celle-ci n'étant
+            # pas suivie par _fermer_webcam.
+            with self._webcam_lock:
+                if self.state != IDLE:
+                    return {'ok': False,
+                            'error': "Webcam occupée par l'enregistrement"}
+                source = self._webcam_factory(device_index=int(index))
+                source.start()
+            # Un Event local plutôt que time.sleep : les tests neutralisent
+            # `time.sleep` du module, ce qui ferait tourner cette attente à
+            # vide pendant 5 s. `Event.wait` garde ses 50 ms réelles.
+            pause = threading.Event()
             fin = time.time() + 5.0
             while time.time() < fin and not source.prete and not source.erreur:
-                time.sleep(0.05)
+                pause.wait(0.05)
             if source.erreur:
                 return {'ok': False, 'error': source.erreur}
             image = source.latest()

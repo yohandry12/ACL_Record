@@ -4,6 +4,7 @@ Le pont reçoit ses dépendances par injection : ces tests le pilotent avec
 de faux moteurs, sans ouvrir de fenêtre ni enregistrer quoi que ce soit.
 """
 
+import threading
 import time
 
 import pytest
@@ -141,7 +142,17 @@ def bridge(monkeypatch, tmp_path):
     b._webcam_factory = FakeWebcam
     b._lister_webcams = lambda rafraichir=False: [
         {'index': 0, 'nom': "Cam de test"}]
-    return b
+    yield b
+    # Remise au repos AVANT shutdown : les boucles du décompte, de la
+    # minuterie et de l'aperçu sortent toutes sur l'état. Sans cela, un
+    # test qui se termine en PENDING laisse son décompte arriver à terme
+    # après coup — _launch() démarre alors une capture hors test, qui
+    # lance à son tour une minuterie et un aperçu que plus rien
+    # n'arrête. Ces threads tournent jusqu'à la fin de la session, sur
+    # des time.sleep redevenus réels une fois le monkeypatch défait :
+    # d'où des exécutions de la suite plusieurs fois plus longues.
+    b.state = IDLE
+    b.shutdown()
 
 
 def attendre(condition, timeout=3.0):
@@ -1024,6 +1035,75 @@ def test_une_webcam_perdue_est_signalee_une_seule_fois(bridge, monkeypatch):
     assert sum('perdue' in a for a in
                bridge._window.events_named('notice')) == 1
     assert bridge.state == RECORDING
+
+
+def test_l_avis_de_perte_ne_deborde_pas_sur_l_enregistrement_suivant(
+        bridge, monkeypatch):
+    """L'aperçu de la session précédente peut être encore en train de
+    finir quand la suivante démarre : il ne doit pas émettre l'avis de
+    perte à la place — une seule fois pour la session concernée, aucune
+    pour la seconde dont la caméra va bien."""
+    activer_webcam(bridge)
+    demarrer_sans_attendre(bridge, monkeypatch)
+    perdue = FakeWebcam.instances[0]
+    perdue.image = None
+    perdue._erreur = "Webcam perdue en cours d'enregistrement"
+    assert attendre(lambda: any('perdue' in a for a in
+                                bridge._window.events_named('notice')))
+
+    bridge.stop_recording()
+    assert attendre(lambda: bridge.state == IDLE)
+    demarrer_sans_attendre(bridge, monkeypatch)
+    assert bridge.state == RECORDING
+    assert len(FakeWebcam.instances) == 2
+    # La deuxième caméra va bien : l'aperçu doit repartir
+    assert attendre(lambda: len(bridge._window.events_named(
+        'webcam_preview')) > 0)
+    time.sleep(0.4)
+
+    assert sum('perdue' in a for a in
+               bridge._window.events_named('notice')) == 1
+
+
+def test_test_webcam_refuse_pendant_le_decompte(bridge):
+    """Pendant le décompte la caméra appartient à l'enregistrement."""
+    bridge.start_recording()
+    assert bridge.state == PENDING
+
+    resultat = bridge.test_webcam(0)
+
+    assert resultat['ok'] is False
+    assert 'occupée' in resultat['error']
+
+
+def test_test_webcam_refuse_si_un_enregistrement_s_intercale(bridge):
+    """Le raccourci global lance l'enregistrement depuis son propre
+    thread : il peut passer entre la vérification d'état de test_webcam
+    et l'ouverture de la caméra. La seconde source ne serait suivie par
+    aucun _fermer_webcam et garderait la LED allumée. Ici on simule
+    l'entrelacement en tenant le verrou pendant que l'enregistrement
+    démarre : test_webcam doit revérifier l'état une fois le verrou
+    obtenu, et refuser."""
+    activer_webcam(bridge)
+    bridge._webcam_lock.acquire()
+    try:
+        resultat = {}
+        essai = threading.Thread(
+            target=lambda: resultat.update(bridge.test_webcam(0)))
+        essai.start()
+        # Le thread a passé la première vérification d'état et attend
+        # maintenant le verrou : l'enregistrement s'intercale ici
+        time.sleep(0.1)
+        assert essai.is_alive()
+        bridge.state = PENDING
+    finally:
+        bridge._webcam_lock.release()
+    essai.join(timeout=3.0)
+
+    assert resultat.get('ok') is False
+    assert 'occupée' in resultat['error']
+    # Aucune source n'a été ouverte hors du suivi du pont
+    assert FakeWebcam.instances == []
 
 
 def test_get_webcams_relit_la_liste(bridge):
