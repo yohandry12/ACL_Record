@@ -65,8 +65,10 @@ class WebcamSource:
     # --- lecture ---
 
     def start(self) -> None:
-        """Lance le thread et rend la main aussitôt : l'ouverture prend
-        jusqu'à 3 s, le décompte de l'enregistrement les couvre."""
+        """Lance le thread et rend la main aussitôt : l'ouverture mesurée
+        est d'environ 1 s en DirectShow (≈ 2,4 s dans le repli Media
+        Foundation), et le décompte de 3 s de l'enregistrement la
+        couvre."""
         if self._thread is not None:
             return
         self._thread = threading.Thread(target=self._boucle, daemon=True,
