@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #E6E6E9; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: #E8EAED; }
+    a { color: oklch(76.9% 0.166 70.1); } a:hover { color: oklch(83% 0.166 70.1); }
+    .capsule { position: relative; width: 440px; height: 352px; border-radius: 28px; background: #0D0E11;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.14) inset, 0 24px 60px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.25); }
+  </style>
+</helmet>
+<div style="width: 560px; height: 440px; display: flex; align-items: center; justify-content: center;">
+  <div class="capsule">
+    <div style="position: absolute; left: 22px; right: 22px; top: 18px; display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.18em; color: #9AA0A6;">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(76.9% 0.166 70.1);"></span>LUMINA
+      </div>
+      <div style="font-size: 11px; color: #6B7178;">Échap pour annuler</div>
+    </div>
+
+    <div style="position: absolute; left: 0; right: 0; top: 56px; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+      <div style="width: 132px; height: 132px; border-radius: 999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px oklch(76.9% 0.166 70.1) inset, 0 0 0 10px oklch(76.9% 0.166 70.1 / 0.10), 0 0 40px oklch(76.9% 0.166 70.1 / 0.25);">
+        <span style="font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif; font-size: 84px; font-weight: 300; letter-spacing: -0.04em; line-height: 1; color: #E8EAED; font-variant-numeric: tabular-nums;">2</span>
+      </div>
+      <div style="font-size: 12.5px; color: #9AA0A6;">La capture commence</div>
+    </div>
+
+    <div style="position: absolute; left: 22px; right: 22px; bottom: 22px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #6B7178;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: oklch(78% 0.144 163);"></span>Webcam prête
+      </div>
+      <div>1280×720 · 30 im/s · MP4</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

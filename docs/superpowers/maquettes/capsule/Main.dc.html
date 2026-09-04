@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #E6E6E9; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: #E8EAED; }
+    a { color: oklch(76.9% 0.166 70.1); } a:hover { color: oklch(83% 0.166 70.1); }
+    .capsule { position: relative; width: 440px; height: 352px; border-radius: 28px; background: #0D0E11;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.14) inset, 0 24px 60px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.25); }
+    .rond { display: flex; align-items: center; justify-content: center; border-radius: 999px; background: #1A1C20;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 -2px 0 rgba(0,0,0,0.35) inset, 0 4px 10px rgba(0,0,0,0.35); }
+    .pill { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px;
+      font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em; }
+    .pill.on { background: oklch(76.9% 0.166 70.1 / 0.14); color: oklch(83% 0.166 70.1); box-shadow: 0 0 0 1px oklch(76.9% 0.166 70.1 / 0.35) inset; }
+    .pill.off { background: #1A1C20; color: #9AA0A6; box-shadow: 0 0 0 1px #2E3238 inset; }
+    .onde { display: flex; align-items: center; gap: 3px; height: 28px; }
+    .onde i { display: block; width: 2px; height: 2px; border-radius: 2px; background: #3D424A; }
+  </style>
+</helmet>
+<div style="width: 560px; height: 440px; display: flex; align-items: center; justify-content: center;">
+  <div class="capsule">
+    <div style="position: absolute; left: 22px; right: 22px; top: 18px; display: flex; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.18em; color: #9AA0A6;">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(76.9% 0.166 70.1);"></span>LUMINA
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="rond" style="width: 28px; height: 28px;" title="Extensions">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9AA0A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+        </div>
+        <div class="rond" style="width: 28px; height: 28px;" title="Réglages">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9AA0A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div style="position: absolute; left: 0; right: 0; top: 64px; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+      <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif; font-size: 72px; font-weight: 300; letter-spacing: -0.03em; line-height: 1; color: #6B7178; font-variant-numeric: tabular-nums;">00:00</div>
+      <div style="font-size: 11.5px; color: #6B7178; display: flex; align-items: center; gap: 8px;">
+        Prêt à enregistrer
+        <span style="font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #1A1C20; color: #9AA0A6; box-shadow: 0 0 0 1px #2E3238 inset;">F9</span>
+      </div>
+    </div>
+
+    <div class="onde" style="position: absolute; left: 60px; right: 60px; top: 172px; justify-content: center;">
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+
+    <div style="position: absolute; left: 0; right: 0; top: 214px; display: flex; align-items: center; justify-content: center; gap: 22px;">
+      <div class="rond" style="width: 46px; height: 46px;" title="Ouvrir le dossier des vidéos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E8EAED" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      </div>
+      <div style="width: 68px; height: 68px; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: oklch(76.9% 0.166 70.1); box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset, 0 -3px 0 rgba(0,0,0,0.18) inset, 0 8px 22px oklch(76.9% 0.166 70.1 / 0.35);" title="Commencer l'enregistrement">
+        <span style="width: 22px; height: 22px; border-radius: 50%; background: #0D0E11;"></span>
+      </div>
+      <div class="rond" style="width: 46px; height: 46px;" title="Smart Focus">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E8EAED" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+      </div>
+    </div>
+
+    <div style="position: absolute; left: 22px; right: 22px; bottom: 20px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+      <div class="pill on">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Micro
+      </div>
+      <div class="pill on">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></svg>Son système
+      </div>
+      <div class="pill off">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3z"/></svg>Webcam
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

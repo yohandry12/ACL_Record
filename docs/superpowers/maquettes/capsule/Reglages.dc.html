@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #E6E6E9; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: #E8EAED; }
+    a { color: oklch(76.9% 0.166 70.1); } a:hover { color: oklch(83% 0.166 70.1); }
+    .capsule { position: relative; width: 440px; height: 352px; border-radius: 28px; background: #0D0E11; overflow: hidden;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.14) inset, 0 24px 60px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.25); }
+    .feuille { position: absolute; left: 0; right: 0; top: 44px; bottom: 0; box-sizing: border-box; border-radius: 24px 24px 0 0; background: #1A1C20;
+      display: flex; flex-direction: column; padding: 18px 22px 16px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset, 0 -12px 30px rgba(0,0,0,0.45); }
+    .poignee { position: absolute; left: 0; right: 0; top: 7px; display: flex; justify-content: center; }
+    .poignee span { width: 36px; height: 4px; border-radius: 2px; background: #3D424A; }
+    .entete { display: flex; align-items: center; justify-content: space-between; height: 24px; margin-bottom: 8px; }
+    .onglets { display: flex; align-items: center; gap: 14px; font-size: 11.5px; color: #9AA0A6; }
+    .titre { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; color: #6B7178; line-height: 16px; margin-bottom: 4px; }
+    .ligne { display: flex; align-items: center; justify-content: space-between; height: 32px; flex: none; }
+    .ligne.haute { height: 44px; margin-top: 4px; }
+    .lib { font-size: 12.5px; color: #E8EAED; line-height: 16px; }
+    .sous { font-size: 10.5px; color: #6B7178; line-height: 13px; }
+    .inter { position: relative; width: 38px; height: 22px; border-radius: 999px; flex: none; }
+    .inter.on { background: oklch(76.9% 0.166 70.1); box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset; }
+    .inter span { position: absolute; top: 2px; left: 18px; width: 18px; height: 18px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+    .seg { display: flex; align-items: center; height: 26px; padding: 2px; border-radius: 8px; background: #0D0E11; box-shadow: 0 0 0 1px #2E3238 inset; gap: 2px; box-sizing: border-box; }
+    .seg div { display: flex; align-items: center; justify-content: center; height: 22px; padding: 0 10px; border-radius: 6px; font-size: 11.5px; color: #9AA0A6; }
+    .seg div.sel { background: #22252A; color: #E8EAED; box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 1px 2px rgba(0,0,0,0.35); }
+    .liste { display: flex; align-items: center; justify-content: space-between; height: 28px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 8px; background: #0D0E11; box-shadow: 0 0 0 1px #2E3238 inset; font-size: 11.5px; color: #E8EAED; }
+    .bouton { height: 28px; padding: 0 14px; border-radius: 8px; display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; background: #22252A; color: #E8EAED; box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 0 0 1px #2E3238 inset; }
+    .apercu { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; background: #22252A; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.85), 0 4px 10px rgba(0,0,0,0.45); }
+  </style>
+</helmet>
+<div style="width: 560px; height: 440px; display: flex; align-items: center; justify-content: center;">
+  <div class="capsule">
+    <div style="position: absolute; left: 22px; right: 22px; top: 14px; display: flex; align-items: center; justify-content: space-between; opacity: 0.45;">
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.18em; color: #9AA0A6;">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(76.9% 0.166 70.1);"></span>LUMINA
+      </div>
+      <div style="font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 300; color: #6B7178; font-variant-numeric: tabular-nums;">00:00</div>
+    </div>
+
+    <div class="feuille">
+      <div class="poignee"><span></span></div>
+      <div class="entete">
+        <div style="font-size: 14px; font-weight: 600;">Réglages</div>
+        <div class="onglets">
+          <span style="color: #E8EAED; font-weight: 600;">Capture</span><span>Audio</span><span style="color: oklch(83% 0.166 70.1); font-weight: 600;">Webcam</span><span>IA</span>
+        </div>
+      </div>
+
+      <div class="titre">WEBCAM</div>
+      <div class="ligne">
+        <div><div class="lib">Incruster mon visage</div><div class="sous">Désactivé par défaut, jamais sans votre choix</div></div>
+        <div class="inter on"><span></span></div>
+      </div>
+      <div class="ligne">
+        <div class="lib">Caméra</div>
+        <div class="liste" style="width: 196px;">Integrated Webcam
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9AA0A6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+      <div class="ligne">
+        <div class="lib">Forme</div>
+        <div class="seg">
+          <div class="sel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="8"/></svg></div>
+          <div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="4" width="16" height="16" rx="5"/></svg></div>
+          <div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="4" width="16" height="16" rx="1"/></svg></div>
+        </div>
+      </div>
+      <div class="ligne">
+        <div class="lib">Coin</div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; width: 46px;">
+          <span style="height: 11px; border-radius: 3px; background: #2E3238;"></span><span style="height: 11px; border-radius: 3px; background: #2E3238;"></span>
+          <span style="height: 11px; border-radius: 3px; background: #2E3238;"></span><span style="height: 11px; border-radius: 3px; background: oklch(76.9% 0.166 70.1);"></span>
+        </div>
+      </div>
+      <div class="ligne">
+        <div class="lib">Taille</div>
+        <div class="seg"><div>Petite</div><div class="sel">Moyenne</div><div>Grande</div></div>
+      </div>
+      <div class="ligne haute">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="lib">Miroir</div>
+          <div class="inter on"><span></span></div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="bouton">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3z"/></svg>Tester
+          </div>
+          <div class="apercu" title="Aperçu 2 s, dans la forme choisie">
+            <div style="width: 100%; height: 100%; background: radial-gradient(circle at 50% 38%, #C99A78 0 26%, transparent 27%), radial-gradient(ellipse at 50% 100%, #3B4A5C 0 45%, transparent 46%), linear-gradient(#2A2E34, #1A1C20);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

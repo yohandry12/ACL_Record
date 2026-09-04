@@ -1,0 +1,13 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 560, "h": 440, "title": "Capsule · repos" },
+    { "file": "Decompte.dc.html", "x": 640, "y": 0, "w": 560, "h": 440, "title": "Capsule · décompte" },
+    { "file": "Reglages.dc.html", "x": 1280, "y": 0, "w": 560, "h": 440, "title": "Feuille de réglages · Webcam" },
+    { "file": "Widget.dc.html", "x": 0, "y": 580, "w": 440, "h": 260, "title": "Widget · enregistrement + webcam" }
+  ],
+  "annotations": [
+    { "id": "principe", "x": 520, "y": 600, "w": 300, "text": "Une seule forme du repos à l'enregistrement : le widget est la capsule réduite. Sans bordure Windows, coins arrondis, déplaçable en la saisissant — vérifié sur cette machine.\n\nLa vignette webcam est dans le widget, donc absente de la vidéo. Dans la vidéo, le visage est incrusté par le filtre, à la forme et au coin choisis." },
+    { "id": "objet", "x": 860, "y": 600, "w": 300, "text": "Ce qui change par rapport à l'actuel : un objet, pas un formulaire. Chrono géant à chiffres tabulaires, onde comme signature, boutons ronds à relief, un seul accent (l'ambre existant). Les réglages détaillés passent derrière l'engrenage, dans une feuille qui glisse depuis la capsule." }
+  ],
+  "launch": { "view": "canvas" }
+}
