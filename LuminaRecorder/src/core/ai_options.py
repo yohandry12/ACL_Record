@@ -59,7 +59,8 @@ class AIOptions:
             config.set(section, key, options.get(opt, False))
 
     @staticmethod
-    def build_filters(options: dict, plugins_actifs=None) -> list:
+    def build_filters(options: dict, plugins_actifs=None,
+                      webcam_filter=None) -> list:
         filters = []
         # Sans moteur OCR, le flou n'a aucune zone à masquer : on n'ajoute
         # pas un filtre inerte, même si le .ini garde la valeur d'une
@@ -78,6 +79,12 @@ class AIOptions:
         # Seuls les FrameFilter sont retenus : un post-traitement activé
         # n'a rien à faire dans la chaîne temps réel.
         filters.extend(AIOptions._plugins_filtres(plugins_actifs))
+
+        # La webcam en tout dernier : après le flou, sinon l'OCR
+        # flouterait le visage ; après les plugins, pour que la vignette
+        # se pose sur une image finie
+        if webcam_filter is not None:
+            filters.append(webcam_filter)
         return filters
 
     @staticmethod

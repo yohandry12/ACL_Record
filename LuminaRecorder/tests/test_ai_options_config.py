@@ -214,3 +214,39 @@ def test_sans_plugins_le_comportement_est_inchange():
     filtres = AIOptions.build_filters({'clean_canvas': True})
 
     assert len(filtres) == 1
+
+
+def test_le_filtre_webcam_est_dernier_de_la_chaine(monkeypatch):
+    """Après le flou (sinon l'OCR flouterait le visage) et après les
+    plugins : la vignette se pose sur une image finie."""
+    from core import ai_options
+    from filters.base import FrameFilter
+    from filters.webcam_overlay_filter import WebcamOverlayFilter
+
+    class FauxPlugin(FrameFilter):
+        name = "Faux"
+
+        def process(self, frame):
+            return frame
+
+    class Source:
+        def latest(self):
+            return None
+
+    monkeypatch.setattr(ai_options, 'lister_plugins',
+                        lambda: [_info_plugin()])
+    monkeypatch.setattr(ai_options, 'charger_plugin', lambda i: FauxPlugin())
+    webcam = WebcamOverlayFilter(Source())
+
+    filtres = AIOptions.build_filters({'clean_canvas': True},
+                                      plugins_actifs=['faux'],
+                                      webcam_filter=webcam)
+
+    assert filtres[-1] is webcam
+    assert len(filtres) == 3
+
+
+def test_sans_filtre_webcam_la_chaine_est_inchangee():
+    filtres = AIOptions.build_filters({'clean_canvas': True},
+                                      webcam_filter=None)
+    assert len(filtres) == 1
