@@ -93,13 +93,20 @@ REM vendored manquante l'une apres l'autre.
 REM pyarrow (76 Mo) n'est importe par aucun de nos modules et n'est
 REM declare par aucune de nos dependances : PyInstaller l'aspirait par
 REM un import optionnel de pandas, lui-meme tire par easyocr.
+REM assets\ n'est PAS embarque en bloc : ce dossier recoit aussi les
+REM enregistrements de l'utilisateur. Une video de diagnostic de 27 Mo
+REM laissee la a fait passer le setup de 118,8 a 145,6 Mo sans que rien
+REM ne le signale. Seuls les trois sous-dossiers reellement utilises par
+REM l'application sont inclus.
 pyinstaller ^
     --name "LuminaRecorder" ^
     --windowed ^
     --noconfirm ^
     %ICON_OPT% ^
     --add-data "config;config" ^
-    --add-data "assets;assets" ^
+    --add-data "assets\icons;assets\icons" ^
+    --add-data "assets\fonts;assets\fonts" ^
+    --add-data "assets\Records_examples;assets\Records_examples" ^
     --add-data "src;src" ^
     --paths "src" ^
     --exclude-module=easyocr ^
