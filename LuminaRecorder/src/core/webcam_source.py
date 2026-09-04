@@ -46,6 +46,9 @@ class WebcamSource:
     # Lectures ratées consécutives avant de déclarer la caméra perdue
     LECTURES_RATEES_MAX = 3
 
+    # Délai laissé au thread pour sortir d'un read() bloqué lors du stop()
+    ARRET_TIMEOUT = 2.0
+
     def __init__(self, device_index: int = 0, largeur: int = 640,
                  hauteur: int = 480,
                  capture_factory: Optional[Callable[[int], object]] = None):
@@ -99,6 +102,11 @@ class WebcamSource:
                     continue
                 ratees = 0
                 with self._lock:
+                    # Un stop() peut être arrivé pendant que read() bloquait :
+                    # ne jamais écrire une image après coup, la caméra est
+                    # censée être considérée arrêtée par l'appelant.
+                    if self._arret.is_set():
+                        break
                     self._latest = image
         finally:
             try:
@@ -129,10 +137,19 @@ class WebcamSource:
             return self._erreur
 
     def stop(self) -> None:
-        """Libère la caméra : la LED s'éteint, preuve visible."""
+        """Libère la caméra : la LED s'éteint, preuve visible.
+
+        Si le pilote est bloqué dans read() au-delà d'ARRET_TIMEOUT, le
+        thread reste vivant à la sortie de cette méthode ; _latest est
+        tout de même effacé ici, et _boucle refusera d'y réécrire une
+        image tardive une fois _arret posé — la libération réelle de la
+        caméra n'a lieu que lorsque read() rend enfin la main."""
         self._arret.set()
         if self._thread is not None:
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=self.ARRET_TIMEOUT)
+            if self._thread.is_alive():
+                print("[Lumina] Webcam : le pilote ne rend pas la main, "
+                      "libération différée")
         with self._lock:
             self._latest = None
 

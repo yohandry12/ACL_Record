@@ -120,6 +120,54 @@ def test_stop_sans_start_ne_leve_pas():
     WebcamSource(capture_factory=fabrique(FausseCapture())).stop()
 
 
+class FausseCaptureBloquante:
+    """Rend une première image puis bloque le deuxième read() jusqu'à
+    ce que le test libère l'événement — simule un pilote qui ne rend
+    pas la main à temps pour stop()."""
+
+    def __init__(self):
+        self.compteur = 0
+        self.liberee = False
+        self.bloque = threading.Event()     # posé une fois DANS le read() bloquant
+        self.debloquer = threading.Event()
+
+    def isOpened(self):
+        return True
+
+    def set(self, prop, val):
+        pass
+
+    def read(self):
+        self.compteur += 1
+        if self.compteur == 1:
+            return True, np.full((480, 640, 3), 1, np.uint8)
+        self.bloque.set()
+        self.debloquer.wait()
+        return True, np.full((480, 640, 3), 2, np.uint8)
+
+    def release(self):
+        self.liberee = True
+
+
+def test_stop_avec_read_bloque_ne_publie_pas_d_image_tardive(monkeypatch):
+    monkeypatch.setattr(WebcamSource, 'ARRET_TIMEOUT', 0.05)
+    capture = FausseCaptureBloquante()
+    source = WebcamSource(capture_factory=fabrique(capture))
+    source.start()
+    # Attend que le thread soit bien dans le read() bloquant (deuxième
+    # appel) avant de stopper, pour ne pas dépendre d'un minutage fragile.
+    assert attendre(lambda: capture.bloque.is_set())
+
+    source.stop()
+    assert source.latest() is None
+
+    # Le pilote rend enfin la main : l'image tardive ne doit pas réapparaître
+    capture.debloquer.set()
+    assert attendre(lambda: not source._thread.is_alive())
+    assert source.latest() is None
+    assert capture.liberee is True
+
+
 def test_la_resolution_demandee_est_appliquee():
     import cv2
     capture = FausseCapture()
