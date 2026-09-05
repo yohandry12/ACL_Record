@@ -117,5 +117,10 @@ def run() -> int:
 
     window.events.closing += on_closing
 
-    webview.start(on_start, private_mode=False)
+    # Profil jetable : la page est locale, il n'y a rien à conserver
+    # entre deux lancements (aucun cookie, aucune session). Un profil
+    # persistant a servi une page périmée après mise à jour — constaté
+    # pendant le développement : WebView2 gardait l'index.html mis en
+    # cache et l'utilisateur voyait l'ancienne interface.
+    webview.start(on_start, private_mode=True)
     return 0

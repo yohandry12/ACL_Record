@@ -81,10 +81,31 @@ function applyState(next) {
     $('widget-size').textContent = '≈ 0 Mo';
     $('progress-bar').style.width = '0%';
     stopWave();
+    // La dernière image de la session précédente ne doit pas réapparaître
+    // une fraction de seconde au début de la suivante
+    $('widget-cam').hidden = true;
+    $('widget-cam-img').removeAttribute('src');
   }
   if (next === 'recording') startWave();
-  if (next === 'pending') { fermerToutesLesFeuilles(); setStatus('Démarrage dans quelques secondes…'); }
-  if (next === 'processing') { $('progress-step').textContent = 'Traitement…'; }
+  if (next === 'pending') {
+    fermerToutesLesFeuilles();
+    setStatus('Démarrage dans quelques secondes…');
+    // Le pied dit ce qui va être enregistré au moment où il est encore
+    // possible d'annuler : webcam prête ou non, et le format.
+    const cam = $('countdown-webcam');
+    const actif = initial && initial.webcam.enabled && initial.webcam.available;
+    cam.innerHTML = '';
+    const point = document.createElement('span');
+    point.className = 'point-ok' + (actif ? '' : ' absent');
+    cam.append(point, actif ? 'Webcam prête' : 'Sans webcam');
+  }
+  if (next === 'processing') {
+    $('progress-step').textContent = 'Traitement…';
+    // « Démarrage dans quelques secondes… », posé au décompte, restait
+    // affiché sous le chrono pendant tout l'encodage : l'étape en cours
+    // est déjà dite au-dessus de la barre, la ligne de statut se tait.
+    setStatus('');
+  }
 }
 
 /* Point d'entrée des événements poussés par Python */
@@ -139,6 +160,21 @@ function showCountdown(value) {
   node.style.animation = '';
 }
 
+/* Vignette webcam du widget : JPEG base64 poussé par le pont à 8 im/s.
+ * Absente si la webcam est inactive : la colonne de gauche s'étend.
+ *
+ * La forme suit le réglage (rond, carré arrondi, carré) pour que
+ * l'aperçu ressemble à ce qui sera incrusté dans la vidéo. */
+function onWebcamPreview(payload) {
+  if (state !== 'recording' || !payload || !payload.image) return;
+  const cadre = $('widget-cam');
+  if (cadre.hidden) {
+    cadre.hidden = false;
+    cadre.className = 'vignette forme-' + ((initial && initial.webcam.forme) || 'rond');
+  }
+  $('widget-cam-img').src = 'data:image/jpeg;base64,' + payload.image;
+}
+
 /* Onde au repos : 60 points, dessinés une fois */
 function dessinerOndeRepos() {
   const zone = $('onde-repos');
@@ -166,11 +202,13 @@ function drawWave() {
   const ctx = canvas.getContext('2d');
   const { width, height } = canvas;
   const middle = height / 2;
-  const step = 7;
+  const step = 5;
   const bars = Math.ceil(width / step) + 2;
 
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+  // Barres pleines et sombres sur la bande ambre, comme la maquette :
+  // un noir translucide laissait passer l'ambre et grisait le trace.
+  ctx.fillStyle = '#0D0E11';
 
   for (let i = 0; i < bars; i += 1) {
     const x = i * step - (waveOffset % step);
@@ -181,8 +219,8 @@ function drawWave() {
       Math.abs(Math.sin(seed * 0.7)) * 0.45 +
       Math.abs(Math.sin(seed * 0.31 + 1.2)) * 0.35 +
       Math.abs(Math.sin(seed * 1.9 + 0.4)) * 0.2;
-    const barHeight = Math.max(2, amplitude * height * 0.78);
-    ctx.fillRect(x, middle - barHeight / 2, 2.5, barHeight);
+    const barHeight = Math.max(2, amplitude * height * 0.85);
+    ctx.fillRect(x, middle - barHeight / 2, 2, barHeight);
   }
 }
 
@@ -270,7 +308,6 @@ function wireSettings() { /* tâche 4 */ }
 function openExtensions() { ouvrirFeuille('sheet-extensions'); }   /* tâche 4 : remplissage */
 function openUpdate() { ouvrirFeuille('sheet-update'); }           /* tâche 4 : remplissage */
 async function chargerConfigIa() { /* tâche 4 */ }
-function onWebcamPreview() { /* tâche 4 */ }
 function onUpdateAvailable() { /* tâche 4 */ }
 function onUpdateProgress() { /* tâche 4 */ }
 function onUpdateLaunching() { /* tâche 4 */ }

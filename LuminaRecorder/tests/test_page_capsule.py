@@ -74,6 +74,15 @@ def test_les_zones_de_saisie_existent():
     assert html.count('pywebview-drag-region') >= 3
 
 
+def test_le_profil_webview_est_jetable():
+    """Un profil WebView2 persistant a servi une page périmée après une
+    mise à jour : la page est locale, il n'y a rien à conserver."""
+    source = (Path(__file__).parent.parent / 'src' / 'webui' / 'app.py'
+              ).read_text(encoding='utf-8')
+    assert 'private_mode=True' in source
+    assert 'private_mode=False' not in source
+
+
 def test_aucune_ressource_distante():
     html = (ASSETS / 'index.html').read_text(encoding='utf-8')
     css = (ASSETS / 'style.css').read_text(encoding='utf-8')

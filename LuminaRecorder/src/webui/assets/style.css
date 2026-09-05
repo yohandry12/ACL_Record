@@ -164,13 +164,70 @@ body[data-state="pending"] .rec-coeur { border-radius: 5px; }
 .pastille[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-hi); box-shadow: 0 0 0 1px oklch(76.9% 0.166 70.1 / 0.35) inset; }
 .pastille:disabled { opacity: 0.4; }
 
+/* --- Décompte : l'anneau remplace le chrono ---
+ *
+ * Pendant le décompte, la capsule ne montre plus qu'une chose : le
+ * temps qui reste. Le chrono, les commandes et les pastilles s'effacent
+ * — cliquer sur REC une seconde fois n'aurait aucun sens, et le pied
+ * rappelle ce qui va être enregistré (webcam, format) au moment précis
+ * où il est encore possible d'annuler.
+ */
+body[data-state="pending"] .scene, body[data-state="pending"] .onde-repos,
+body[data-state="pending"] .commandes, body[data-state="pending"] .pastilles { display: none; }
+body[data-state="pending"] .decompte { display: flex; }
+body[data-state="pending"] .decompte-pied { display: flex; }
+/* Le rappel d'annulation se pose dans la barre de titre, à gauche des
+ * boutons ronds : la maquette n'a pas ces boutons, d'où le décalage. */
+body[data-state="pending"] .entete-saisie::after { content: "Échap pour annuler"; position: absolute; right: 150px; top: 8px; font-size: 11px; color: var(--text-faint); }
+.decompte { position: absolute; left: 0; right: 0; top: 56px; display: none; flex-direction: column; align-items: center; gap: 10px; }
+.anneau { width: 132px; height: 132px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 0 3px var(--accent) inset, 0 0 0 10px oklch(76.9% 0.166 70.1 / 0.10), 0 0 40px oklch(76.9% 0.166 70.1 / 0.25); }
+.anneau span { font-family: var(--font-display); font-size: 84px; font-weight: 300; letter-spacing: -0.04em; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums;
+  animation: battement 1s var(--spring); }
+@keyframes battement { from { transform: scale(1.18); opacity: 0.4; } to { transform: scale(1); opacity: 1; } }
+.decompte-texte { font-size: 12.5px; color: var(--text-dim); }
+.decompte-pied { position: absolute; left: 22px; right: 22px; bottom: 22px; display: none; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-faint); }
+.decompte-pied #countdown-webcam { display: flex; align-items: center; gap: 6px; }
+.point-ok { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.point-ok.absent { background: var(--border-bright); }
+
+/* --- Widget : la capsule réduite, 360×180 ---
+ *
+ * La fenêtre entière fait cette taille pendant la capture (bridge :
+ * COMPACT_SIZE) : le widget occupe donc tout, sans marge ni rayon —
+ * l'arrondi est découpé côté Windows sur la fenêtre elle-même.
+ */
+body[data-state="recording"] .widget { display: flex; }
+.widget { display: none; box-sizing: border-box; width: 360px; height: 180px; background: var(--capsule); flex-direction: column; gap: 10px; padding: 14px 16px 12px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.14) inset; }
+.widget-haut { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 0; }
+.widget-infos { display: flex; flex-direction: column; justify-content: center; gap: 6px; min-width: 0; }
+.widget-etat { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; line-height: 16px; }
+.point-rec { width: 8px; height: 8px; border-radius: 50%; background: var(--rec); box-shadow: 0 0 8px oklch(64.5% 0.216 24.5 / 0.8); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+.widget-chrono { display: flex; align-items: flex-start; gap: 4px; font-family: var(--font-display); }
+.widget-chrono b { font-size: 44px; font-weight: 300; letter-spacing: -0.03em; line-height: 44px; font-variant-numeric: tabular-nums; }
+.widget-chrono sup { font-size: 13px; font-weight: 400; color: var(--text-dim); line-height: 13px; margin-top: 6px; }
+.widget-meta { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--text-faint); line-height: 18px; }
+.puce-taille { padding: 0 7px; border-radius: 6px; background: var(--accent); color: var(--capsule); font-weight: 700; }
+.vignette { flex: none; width: 84px; height: 84px; border-radius: 50%; overflow: hidden; background: var(--bg-elevated);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.85), 0 6px 16px rgba(0,0,0,0.5); }
+.vignette.forme-carre_arrondi { border-radius: 18px; }
+.vignette.forme-carre { border-radius: 6px; }
+.vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bande { position: relative; flex: none; height: 44px; border-radius: 14px; background: var(--accent); display: flex; align-items: center; justify-content: space-between;
+  padding: 0 8px 0 14px; box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset; overflow: hidden; }
+.widget-wave { position: absolute; left: 14px; top: 11px; height: 22px; width: calc(100% - 100px); }
+.bande-boutons { position: relative; z-index: 1; margin-left: auto; display: flex; gap: 6px; }
+.bande-bouton { width: 30px; height: 30px; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: rgba(13,14,17,0.18); color: var(--capsule); }
+.bande-bouton:disabled { opacity: 0.35; }
+.bande-bouton.arret { background: var(--capsule); box-shadow: 0 2px 6px rgba(0,0,0,0.35); }
+.bande-bouton.arret span { width: 10px; height: 10px; border-radius: 2px; background: var(--text); }
+.bande-bouton:active:not(:disabled) { transform: scale(0.94); }
+
 /* --- États encore nus ---
- * Le décompte, le widget et les feuilles ont leur balisage dès
- * maintenant pour que les identifiants existent, mais leur habillage
- * arrive aux tâches 3 et 4. Masqués d'ici là : une moitié de mise en
- * forme serait pire qu'aucune. */
-.decompte, .decompte-pied { display: none; }
-.widget { display: none; }
+ * Les feuilles ont leur balisage dès maintenant pour que les
+ * identifiants existent, mais leur habillage arrive à la tâche 4. */
 .feuille[hidden], .voile[hidden] { display: none; }
 
 /* ---------- Accessibilité ---------- */
@@ -187,4 +244,7 @@ body[data-state="pending"] .rec-coeur { border-radius: 5px; }
    * disparaît, la couleur reste — elle ne provoque aucun trouble
    * vestibulaire et porte l'essentiel de l'information. */
   .rec:active, .rond:active { transform: none !important; }
+  /* Le battement du décompte et la pulsation du point rouge sont
+   * décoratifs : le chiffre et la couleur suffisent à les remplacer. */
+  .point-rec, .anneau span { animation: none !important; }
 }
