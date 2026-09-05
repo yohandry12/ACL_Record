@@ -87,6 +87,10 @@ function applyState(next) {
     // une fraction de seconde au début de la suivante
     $('widget-cam').hidden = true;
     $('widget-cam-img').removeAttribute('src');
+    // Le traitement a fait taire le statut par setStatus('') : sans
+    // cette ligne la puce resterait masquée au retour au repos, aucune
+    // minuterie n'étant en attente pour la rendre.
+    $('hotkey').hidden = false;
   }
   if (next === 'recording') startWave();
   if (next === 'pending') {
@@ -278,10 +282,10 @@ function ouvrirFeuille(id) {
 function fermerFeuille() {
   const id = pile[pile.length - 1];
   if (!id) return;
-  // Pas de fermeture pendant le téléchargement d'une mise à jour, par
-  // quelque geste que ce soit : l'utilisateur doit voir si son
-  // installateur est complet ou en échec.
-  if (id === 'sheet-update' && updateDownloading) return;
+  // Une feuille verrouillée ne se ferme ni par Échap, ni par la croix,
+  // ni par le voile : c'est la feuille elle-même qui décide, la
+  // mécanique de la pile n'a pas à connaître les cas particuliers.
+  if ($(id).dataset.verrouillee) return;
   pile.pop();
   const feuille = $(id);
   feuille.classList.remove('ouverte');
@@ -297,8 +301,8 @@ function fermerFeuille() {
   if (!pile.length) $('voile').hidden = true;
 }
 
-/* S'arrête si une feuille refuse de partir (mise à jour en cours) :
- * sans ce garde-fou, la boucle tournerait sans fin. */
+/* S'arrête si une feuille refuse de partir (verrouillée) : sans ce
+ * point fixe, la boucle tournerait sans fin. */
 function fermerToutesLesFeuilles() {
   let reste = pile.length;
   while (reste) {
@@ -449,7 +453,6 @@ function wireSettings() {
  */
 
 let updateInfo = null;
-let updateDownloading = false;
 
 function onUpdateAvailable(payload) {
   updateInfo = payload;
@@ -478,7 +481,11 @@ async function startUpdateInstall() {
     $('update-status').textContent = (result && result.error) || 'Mise à jour impossible';
     return;
   }
-  updateDownloading = true;
+  // Verrouillée le temps du téléchargement : l'utilisateur doit voir si
+  // son installateur est complet ou en échec. En cas de succès le verrou
+  // n'est jamais rendu, volontairement — l'application se ferme quand
+  // l'installateur démarre.
+  $('sheet-update').dataset.verrouillee = '1';
   $('update-install').disabled = true;
   $('update-later').disabled = true;
   $('update-progress').hidden = false;
@@ -496,7 +503,8 @@ function onUpdateLaunching() {
 }
 
 function onUpdateError(message) {
-  updateDownloading = false;
+  // L'échec rend la main : la feuille redevient fermable
+  delete $('sheet-update').dataset.verrouillee;
   $('update-install').disabled = false;
   $('update-later').disabled = false;
   $('update-progress').hidden = true;

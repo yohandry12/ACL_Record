@@ -258,8 +258,11 @@ body[data-state="recording"] .widget { display: flex; }
 /* overflow-x caché, pas auto : la barre verticale prend de la largeur et
  * suffisait à faire apparaître une barre horizontale sous les lignes. */
 .feuille-corps { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--border-bright) transparent; }
-/* Une ligne masquée l'est vraiment : `display: flex` gagne sur [hidden] */
-.ligne[hidden], .avertissement[hidden], .update-notes[hidden] { display: none; }
+/* Une ligne masquée l'est vraiment : `display: flex` gagne sur [hidden].
+ * `.puce-touche` sert aussi dans la feuille de réglages : sans cette
+ * règle, la même classe y deviendrait un piège. */
+.ligne[hidden], .avertissement[hidden], .update-notes[hidden],
+.puce-touche[hidden] { display: none; }
 .feuille-pied { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); padding-top: 8px; }
 .titre { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; color: var(--text-faint); line-height: 16px; margin: 6px 0 4px; }
 .note { margin: 0 0 8px; font-size: 11px; color: var(--text-dim); line-height: 1.4; }
