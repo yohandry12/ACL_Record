@@ -28,7 +28,7 @@ IDS_ATTENDUS = [
     'system-audio', 'gain', 'gain-value',
     'webcam-enabled', 'webcam-device', 'webcam-forme', 'webcam-coin',
     'webcam-taille', 'webcam-miroir', 'webcam-test', 'webcam-preview',
-    'webcam-hint',
+    'webcam-hint', 'webcam-erreur', 'onglets-trait',
     'provider-line', 'open-ai-config', 'charge-warning',
     'privacy_blur', 'clean_canvas', 'overlay', 'subtitles', 'magic_cut',
     'magic_cut_max', 'delete_original', 'subtitle_fix', 'summary',

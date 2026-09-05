@@ -276,12 +276,19 @@ function ouvrirFeuille(id) {
   $('voile').hidden = false;
   feuille.hidden = false;
   feuille.style.zIndex = String(10 + pile.length);
-  requestAnimationFrame(() => feuille.classList.add('ouverte'));
+  requestAnimationFrame(() => {
+    feuille.classList.add('ouverte');
+    // Masquée, la barre d'onglets n'a pas de dimensions : le trait ne peut
+    // être mesuré qu'une fois la feuille rendue.
+    if (id === 'sheet-settings') placerTraitOnglet();
+  });
 }
 
 function fermerFeuille() {
   const id = pile[pile.length - 1];
   if (!id) return;
+  // Une liste flottante survivrait à la feuille qui la porte
+  fermerToutesLesListes();
   // Une feuille verrouillée ne se ferme ni par Échap, ni par la croix,
   // ni par le voile : c'est la feuille elle-même qui décide, la
   // mécanique de la pile n'a pas à connaître les cas particuliers.
@@ -317,12 +324,273 @@ document.addEventListener('click', (event) => {
   if (event.target.id === 'voile') fermerFeuille();
 });
 
+/* ---------- Liste déroulante maison ----------
+ *
+ * Pourquoi : les `<select>` natifs de Windows imposent leur flèche, leur
+ * fond et leur police. Ils restent malgré tout dans la page — masqués
+ * visuellement — parce qu'ils demeurent la source de vérité : le reste du
+ * script continue de lire et d'écrire `select.value`, d'appeler `add()` et
+ * de basculer `disabled` sans rien savoir de l'habillage. La liste
+ * flottante ne fait que refléter le `<select>`, et un choix de
+ * l'utilisateur y écrit la valeur puis émet un vrai événement `change` :
+ * `bindSelect`, `populateSettings` et les écouteurs existants marchent
+ * sans modification.
+ *
+ * Accessibilité : bouton `aria-haspopup="listbox"` + `aria-expanded`,
+ * liste `role="listbox"`, options `role="option"` avec `aria-selected`, et
+ * `aria-activedescendant` sur le bouton pour dire quelle option est
+ * parcourue au clavier. Entrée/Espace ouvre, Haut/Bas parcourt, Entrée
+ * choisit, Échap ferme, Tab ferme.
+ */
+
+/* Toutes les listes habillées, pour pouvoir n'en garder qu'une ouverte */
+const listes = [];
+
+function habillerSelect(select) {
+  if (!select || select.dataset.habille) return null;
+  select.dataset.habille = '1';
+
+  const champ = document.createElement('div');
+  champ.className = 'champ-liste' + (select.classList.contains('court') ? ' court' : '');
+
+  const bouton = document.createElement('button');
+  bouton.type = 'button';
+  bouton.className = 'champ-liste-bouton';
+  bouton.setAttribute('aria-haspopup', 'listbox');
+  bouton.setAttribute('aria-expanded', 'false');
+  // Le lecteur d'écran doit nommer le contrôle comme le faisait le select
+  const nom = select.getAttribute('aria-label');
+  if (nom) bouton.setAttribute('aria-label', nom);
+
+  const valeur = document.createElement('span');
+  valeur.className = 'champ-liste-valeur';
+
+  const chevron = document.createElement('span');
+  chevron.className = 'champ-liste-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.append(icone('M6 9l6 6 6-6', 12, 2.4));
+
+  bouton.append(valeur, chevron);
+  champ.append(bouton);
+  select.classList.add('natif-masque');
+  select.setAttribute('tabindex', '-1');
+  select.setAttribute('aria-hidden', 'true');
+  select.after(champ);
+
+  const liste = {
+    select, champ, bouton, valeur,
+    menu: null, options: [], index: -1,
+  };
+  listes.push(liste);
+
+  bouton.addEventListener('click', () => basculer(liste));
+  bouton.addEventListener('keydown', (e) => auClavier(liste, e));
+  // Perdre le focus (Tab) referme : une liste flottante orpheline
+  // resterait posée par-dessus le reste de la feuille.
+  bouton.addEventListener('blur', () => { if (liste.menu) fermerListe(liste); });
+
+  rafraichirListe(liste);
+  return liste;
+}
+
+/* Petit chevron / coche en SVG, construit par noeuds — aucune ressource
+ * externe, et rien qui passe par innerHTML. */
+function icone(chemin, taille, epaisseur) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('width', String(taille));
+  svg.setAttribute('height', String(taille));
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', String(epaisseur));
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', chemin);
+  svg.append(path);
+  return svg;
+}
+
+/* Recopie l'état du `<select>` sur le bouton : libellé affiché et
+ * disponibilité. Appelée après chaque remplissage de la liste native. */
+function rafraichirListe(liste) {
+  const { select, bouton, valeur } = liste;
+  const choisie = select.options[select.selectedIndex];
+  // textContent, jamais innerHTML : ces libellés viennent du pont
+  // (noms de micros, de caméras, de fournisseurs).
+  valeur.textContent = choisie ? choisie.text : '—';
+  bouton.title = choisie ? choisie.text : '';
+  bouton.disabled = select.disabled;
+  if (liste.menu) fermerListe(liste);
+}
+
+function rafraichirToutesLesListes() {
+  listes.forEach(rafraichirListe);
+}
+
+function basculer(liste) {
+  if (liste.menu) fermerListe(liste);
+  else ouvrirListe(liste);
+}
+
+function ouvrirListe(liste) {
+  if (liste.select.disabled || liste.menu) return;
+  // Une seule liste ouverte à la fois
+  listes.forEach((autre) => { if (autre !== liste && autre.menu) fermerListe(autre); });
+
+  const menu = document.createElement('div');
+  menu.className = 'champ-liste-menu';
+  menu.setAttribute('role', 'listbox');
+  menu.id = liste.select.id + '-menu';
+
+  liste.options = [];
+  Array.from(liste.select.options).forEach((option, i) => {
+    const item = document.createElement('div');
+    item.className = 'champ-liste-option';
+    item.setAttribute('role', 'option');
+    item.id = liste.select.id + '-option-' + i;
+    item.setAttribute('aria-selected', String(i === liste.select.selectedIndex));
+
+    const coche = document.createElement('span');
+    coche.className = 'champ-liste-coche';
+    coche.setAttribute('aria-hidden', 'true');
+    coche.append(icone('M4 12l5 5L20 6', 12, 2.6));
+
+    const texte = document.createElement('span');
+    texte.className = 'champ-liste-texte';
+    texte.textContent = option.text;
+
+    item.append(coche, texte);
+    // mousedown, pas click : le `blur` du bouton part avant le click et
+    // aurait déjà refermé la liste sous le curseur.
+    item.addEventListener('mousedown', (e) => { e.preventDefault(); choisirOption(liste, i); });
+    item.addEventListener('mouseenter', () => marquerOption(liste, i, false));
+    menu.append(item);
+    liste.options.push(item);
+  });
+
+  liste.champ.append(menu);
+  liste.menu = menu;
+  liste.champ.classList.add('ouverte');
+  liste.bouton.setAttribute('aria-expanded', 'true');
+  liste.bouton.setAttribute('aria-controls', menu.id);
+
+  placerMenu(liste);
+  marquerOption(liste, liste.select.selectedIndex >= 0 ? liste.select.selectedIndex : 0, true);
+}
+
+/* La capsule fait 440×352 et ne grandit pas : la liste se pose sous le
+ * bouton s'il y a la place, au-dessus sinon, et sa hauteur est plafonnée
+ * par ce qui reste réellement disponible — jamais au-delà du bord. */
+function placerMenu(liste) {
+  const menu = liste.menu;
+  const cadre = liste.bouton.getBoundingClientRect();
+  const capsule = $('capsule').getBoundingClientRect();
+  const MARGE = 8;
+  const dessous = capsule.bottom - cadre.bottom - MARGE;
+  const dessus = cadre.top - capsule.top - MARGE;
+  const souhaitee = Math.min(menu.scrollHeight, 168);
+
+  if (souhaitee <= dessous || dessous >= dessus) {
+    menu.classList.remove('vers-le-haut');
+    menu.style.top = 'calc(100% + 4px)';
+    menu.style.bottom = 'auto';
+    menu.style.maxHeight = Math.max(72, Math.min(168, dessous - 4)) + 'px';
+  } else {
+    menu.classList.add('vers-le-haut');
+    menu.style.bottom = 'calc(100% + 4px)';
+    menu.style.top = 'auto';
+    menu.style.maxHeight = Math.max(72, Math.min(168, dessus - 4)) + 'px';
+  }
+}
+
+function fermerListe(liste) {
+  if (!liste.menu) return;
+  liste.menu.remove();
+  liste.menu = null;
+  liste.options = [];
+  liste.index = -1;
+  liste.champ.classList.remove('ouverte');
+  liste.bouton.setAttribute('aria-expanded', 'false');
+  liste.bouton.removeAttribute('aria-controls');
+  liste.bouton.removeAttribute('aria-activedescendant');
+}
+
+function fermerToutesLesListes() {
+  listes.forEach((liste) => { if (liste.menu) fermerListe(liste); });
+}
+
+/* Option parcourue au clavier ou survolée : le focus ne bouge pas, c'est
+ * `aria-activedescendant` qui l'annonce. */
+function marquerOption(liste, index, defiler) {
+  if (!liste.menu || !liste.options.length) return;
+  const borne = Math.max(0, Math.min(index, liste.options.length - 1));
+  liste.options.forEach((item, i) => item.classList.toggle('survol', i === borne));
+  liste.index = borne;
+  liste.bouton.setAttribute('aria-activedescendant', liste.options[borne].id);
+  if (defiler) liste.options[borne].scrollIntoView({ block: 'nearest' });
+}
+
+/* Écrit dans le `<select>` puis émet un vrai `change` : tout le câblage
+ * existant (bindSelect, les écouteurs de #device et #webcam-device) le
+ * reçoit comme si l'utilisateur avait manipulé la liste native. */
+function choisirOption(liste, index) {
+  const change = liste.select.selectedIndex !== index;
+  liste.select.selectedIndex = index;
+  fermerListe(liste);
+  rafraichirListe(liste);
+  liste.bouton.focus();
+  if (change) liste.select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function auClavier(liste, event) {
+  const k = event.key;
+  if (!liste.menu) {
+    if (k === 'Enter' || k === ' ' || k === 'ArrowDown' || k === 'ArrowUp') {
+      event.preventDefault();
+      ouvrirListe(liste);
+    }
+    return;
+  }
+  if (k === 'Escape') { event.preventDefault(); event.stopPropagation(); fermerListe(liste); }
+  else if (k === 'Tab') fermerListe(liste);           // pas de preventDefault : Tab doit avancer
+  else if (k === 'ArrowDown') { event.preventDefault(); marquerOption(liste, liste.index + 1, true); }
+  else if (k === 'ArrowUp') { event.preventDefault(); marquerOption(liste, liste.index - 1, true); }
+  else if (k === 'Home') { event.preventDefault(); marquerOption(liste, 0, true); }
+  else if (k === 'End') { event.preventDefault(); marquerOption(liste, liste.options.length - 1, true); }
+  else if (k === 'Enter' || k === ' ') { event.preventDefault(); choisirOption(liste, liste.index); }
+}
+
+/* Un clic ailleurs referme : sans cela la liste resterait posée sur la
+ * feuille après que l'utilisateur a regardé autre chose. */
+document.addEventListener('mousedown', (event) => {
+  listes.forEach((liste) => {
+    if (liste.menu && !liste.champ.contains(event.target)) fermerListe(liste);
+  });
+});
+
 /* ---------- Réglages ---------- */
 
 function montrerOnglet(nom) {
   document.querySelectorAll('#onglets button').forEach((b) => b.classList.toggle('actif', b.dataset.tab === nom));
   ['capture', 'audio', 'webcam', 'ia'].forEach((t) => { $('tab-' + t).hidden = (t !== nom); });
   $('sheet-settings').querySelector('.feuille-corps').scrollTop = 0;
+  fermerToutesLesListes();
+  placerTraitOnglet();
+}
+
+/* Trait sous l'onglet actif : mesuré, pas codé en dur — les libellés
+ * n'ont pas la même largeur et la police peut varier d'une machine à
+ * l'autre. */
+function placerTraitOnglet() {
+  const trait = $('onglets-trait');
+  const actif = document.querySelector('#onglets button.actif');
+  if (!trait || !actif) return;
+  const base = $('onglets').getBoundingClientRect();
+  const cadre = actif.getBoundingClientRect();
+  trait.style.width = Math.round(cadre.width) + 'px';
+  trait.style.transform = 'translateX(' + Math.round(cadre.left - base.left) + 'px)';
 }
 
 /* Contrôle segmenté ou grille de coins : un clic = une valeur */
@@ -350,7 +618,7 @@ function populateSettings(s) {
   if (!s.smart_focus.available) { $('smart-focus').disabled = true; $('smart-focus-hint').textContent = 'Nécessite pywin32'; }
 
   $('mic').checked = s.audio.mic_enabled;
-  $('gain').value = s.audio.gain; $('gain-value').textContent = s.audio.gain;
+  $('gain').value = s.audio.gain; majGain();
   const device = $('device'); device.innerHTML = '';
   if (!s.audio.devices.length) {
     device.add(new Option('Aucun microphone détecté', '-1')); device.disabled = true;
@@ -370,11 +638,19 @@ function populateSettings(s) {
   if (!w.available) {
     cams.add(new Option('Aucune webcam détectée', '-1')); cams.disabled = true;
     $('webcam-enabled').disabled = true; $('webcam-test').disabled = true;
-    $('webcam-hint').textContent = 'Aucune webcam détectée';
+    // L'absence de matériel n'est pas une erreur : elle est dite dans la
+    // zone d'erreur du champ, et le sous-titre garde son propos.
+    erreurWebcam('Aucune webcam détectée');
   } else {
+    cams.disabled = false;
+    $('webcam-enabled').disabled = false; $('webcam-test').disabled = false;
     w.devices.forEach((d) => cams.add(new Option(d.nom, String(d.index))));
     cams.value = String(w.devices.some((d) => d.index === w.device) ? w.device : w.devices[0].index);
+    erreurWebcam('');
   }
+  // Le sous-titre dit toujours la même chose : c'est un propos de
+  // confidentialité, pas un emplacement à messages.
+  $('webcam-hint').textContent = SOUS_TITRE_WEBCAM;
   setSegment('webcam-forme', w.forme); setSegment('webcam-coin', w.coin); setSegment('webcam-taille', w.taille);
   $('webcam-miroir').checked = w.miroir;
   $('webcam-preview').className = 'apercu forme-' + w.forme;
@@ -385,6 +661,10 @@ function populateSettings(s) {
   $('delete_original').checked = s.ai.delete_original;
   applyAiAvailability(s.ai.available);
   refreshCharge();
+
+  // Les `<select>` viennent d'être remplis : les boutons habillés doivent
+  // afficher la nouvelle valeur.
+  rafraichirToutesLesListes();
 }
 
 /* Interrupteur de la feuille : persiste et reflète sur la pastille */
@@ -398,24 +678,78 @@ function bindInter(id, key, pastilleId) {
   });
 }
 
+/* Sous-titre d'origine de la ligne « Incruster mon visage ». Mémorisé au
+ * démarrage : c'est ce texte qu'on rétablit quand la situation se
+ * dénoue — un message d'erreur ne doit pas le remplacer définitivement. */
+const SOUS_TITRE_WEBCAM = 'Désactivé par défaut, jamais sans votre choix';
+
+/* Erreur de la webcam : dans sa propre zone, sous le champ Caméra.
+ * L'écraser sur le sous-titre faisait disparaître l'information de
+ * confidentialité et laissait un message Python brut dans l'interface. */
+function erreurWebcam(message) {
+  const zone = $('webcam-erreur');
+  if (!zone) return;
+  zone.textContent = message || '';
+  zone.hidden = !message;
+}
+
+/* Index de la caméra choisie, ou `null` si la liste est vide ou porte une
+ * valeur non numérique.
+ *
+ * C'est la racine du défaut « int() argument must be … not 'NoneType' » :
+ * `parseInt('', 10)` vaut `NaN`, que le pont traduit en `None` côté
+ * Python, où `WebcamOptions` et `test_webcam` attendent un entier. On ne
+ * franchit plus le pont sans entier valide. */
+function indexWebcam() {
+  const select = $('webcam-device');
+  if (!select || select.disabled) return null;
+  const n = parseInt(select.value, 10);
+  return Number.isInteger(n) ? n : null;
+}
+
 /* L'appel bloque jusqu'à 5 s le temps d'ouvrir la caméra : le bouton
  * doit le dire, sinon un clic sans réaction passe pour une panne. */
 async function testerWebcam() {
+  const index = indexWebcam();
+  if (index === null || index < 0) {
+    erreurWebcam('Aucune caméra sélectionnée');
+    return;
+  }
   const bouton = $('webcam-test');
   const apercu = $('webcam-preview');
+  erreurWebcam('');
   bouton.disabled = true; bouton.textContent = 'Ouverture…';
-  const r = await call('test_webcam', parseInt($('webcam-device').value, 10));
+  const r = await call('test_webcam', index);
   bouton.disabled = false; bouton.textContent = 'Tester';
   if (r && r.ok) {
     apercu.style.backgroundImage = `url(data:image/jpeg;base64,${r.image})`;
     setTimeout(() => { apercu.style.backgroundImage = ''; }, 2000);
+    // Le test a réussi : la ligne retrouve son sous-titre d'origine
+    $('webcam-hint').textContent = SOUS_TITRE_WEBCAM;
   } else {
-    $('webcam-hint').textContent = (r && r.error) || 'Webcam indisponible';
+    erreurWebcam((r && r.error) || 'Webcam indisponible');
   }
+}
+
+/* Puce de valeur + remplissage ambre de la piste. La piste est peinte par
+ * un dégradé dont la largeur est cette variable : sans elle, la partie
+ * parcourue resterait grise. */
+function majGain() {
+  const glissiere = $('gain');
+  if (!glissiere) return;
+  $('gain-value').textContent = glissiere.value;
+  const min = parseFloat(glissiere.min);
+  const max = parseFloat(glissiere.max);
+  const part = (parseFloat(glissiere.value) - min) / (max - min);
+  glissiere.style.setProperty('--remplissage', Math.round(part * 100) + '%');
 }
 
 function wireSettings() {
   document.querySelectorAll('#onglets button').forEach((b) => b.addEventListener('click', () => montrerOnglet(b.dataset.tab)));
+  // Les six listes de la page prennent l'habillage maison. Le `<select>`
+  // reste dessous et garde son rôle de source de vérité.
+  ['resolution', 'bitrate', 'device', 'webcam-device', 'magic_cut_max', 'ai-provider']
+    .forEach((id) => habillerSelect($(id)));
   bindSelect('resolution', 'resolution');
   bindSelect('bitrate', 'bitrate');
   bindSelect('magic_cut_max', 'magic_cut_max');
@@ -428,9 +762,19 @@ function wireSettings() {
   bindInter('system-audio', 'system_audio', 'pill-system');
   bindInter('webcam-enabled', 'webcam_enabled', 'pill-webcam');
   bindInter('webcam-miroir', 'webcam_miroir', null);
-  $('device').addEventListener('change', () => call('set_option', 'audio_device_index', parseInt($('device').value, 10)));
-  $('webcam-device').addEventListener('change', () => call('set_option', 'webcam_device', parseInt($('webcam-device').value, 10)));
-  $('gain').addEventListener('input', () => { $('gain-value').textContent = $('gain').value; });
+  // Même garde que pour la webcam : une liste vide donne `NaN`, que le
+  // pont transmet en `None` et que Python refuse.
+  $('device').addEventListener('change', () => {
+    const n = parseInt($('device').value, 10);
+    if (Number.isInteger(n)) call('set_option', 'audio_device_index', n);
+  });
+  $('webcam-device').addEventListener('change', () => {
+    const index = indexWebcam();
+    if (index === null) return;
+    erreurWebcam('');
+    call('set_option', 'webcam_device', index);
+  });
+  $('gain').addEventListener('input', () => { majGain(); });
   $('gain').addEventListener('change', () => call('set_option', 'gain', parseFloat($('gain').value)));
   bindSegment('webcam-forme', 'webcam_forme', (v) => { $('webcam-preview').className = 'apercu forme-' + v; if (initial) initial.webcam.forme = v; });
   bindSegment('webcam-coin', 'webcam_coin');
@@ -783,6 +1127,7 @@ function renderAiSheet() {
     select.add(new Option(p.label + suffixe, p.id));
   });
   select.value = aiConfig.provider;
+  rafraichirToutesLesListes();   // la liste habillée suit le select
 
   const info = aiConfig.providers.find((p) => p.id === aiConfig.provider);
   const note = $('ai-privacy');
@@ -1031,6 +1376,9 @@ function wire() {
 
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
+    // Une liste ouverte se ferme d'abord : Échap agit sur la couche du
+    // dessus, pas sur la feuille qui la porte.
+    if (listes.some((l) => l.menu)) { fermerToutesLesListes(); return; }
     if (feuilleOuverte()) { fermerFeuille(); return; }
     if (state === 'pending') call('stop_recording');        // annule le décompte
     else if (state === 'recording') call('toggle_recording');

@@ -97,6 +97,9 @@
         <button data-tab="audio">Audio</button>
         <button data-tab="webcam">Webcam</button>
         <button data-tab="ia">IA</button>
+        <!-- Trait animé sous l'onglet actif : positionné par le script,
+             il glisse d'un onglet à l'autre au lieu de sauter. -->
+        <span class="onglets-trait" id="onglets-trait"></span>
       </nav>
     </div>
     <div class="feuille-corps">
@@ -113,8 +116,10 @@
             <option value="2500k">2500k — léger</option><option value="5000k">5000k — équilibré</option>
             <option value="8000k">8000k — élevé</option><option value="15000k">15000k — maximal</option>
           </select></div>
+        <div class="separateur"></div>
         <div class="ligne"><span class="lib">Smart Focus<span class="sous" id="smart-focus-hint">N'enregistre que la fenêtre active</span></span>
           <label class="inter"><input type="checkbox" id="smart-focus"><span></span></label></div>
+        <div class="separateur"></div>
         <div class="ligne"><span class="lib">Dossier de sortie</span>
           <button class="liste" id="folder" title="">—</button></div>
         <div class="ligne"><span class="lib">Raccourci<span class="sous" id="hotkey-note">fonctionne en arrière-plan</span></span>
@@ -126,17 +131,31 @@
           <label class="inter"><input type="checkbox" id="mic"><span></span></label></div>
         <div class="ligne"><span class="lib">Entrée</span>
           <select id="device" aria-label="Microphone"></select></div>
+        <div class="separateur"></div>
         <div class="ligne"><span class="lib">Son système<span class="sous" id="system-audio-hint">Ce que jouent les haut-parleurs</span></span>
           <label class="inter"><input type="checkbox" id="system-audio"><span></span></label></div>
-        <div class="ligne"><span class="lib">Volume d'entrée · <span id="gain-value">0.5</span>×</span>
-          <input type="range" id="gain" min="0.1" max="2" step="0.1" value="0.5"></div>
+        <div class="separateur"></div>
+        <!-- Volume : le libellé occupe sa propre ligne et la valeur est une
+             puce de largeur fixe. Sur une seule ligne, la glissière comprimait
+             le libellé et le « × » tombait au-dessous. -->
+        <div class="bloc-glissiere">
+          <div class="bloc-entete">
+            <span class="lib">Volume d'entrée</span>
+            <span class="puce-valeur"><span id="gain-value">0.5</span>×</span>
+          </div>
+          <input type="range" id="gain" min="0.1" max="2" step="0.1" value="0.5" aria-label="Volume d'entrée">
+        </div>
       </div>
 
       <div class="onglet" id="tab-webcam" hidden>
         <div class="ligne"><span class="lib">Incruster mon visage<span class="sous" id="webcam-hint">Désactivé par défaut, jamais sans votre choix</span></span>
           <label class="inter"><input type="checkbox" id="webcam-enabled"><span></span></label></div>
         <div class="ligne"><span class="lib">Caméra</span>
-          <select id="webcam-device"></select></div>
+          <select id="webcam-device" aria-label="Caméra"></select></div>
+        <!-- Place réservée aux erreurs de la webcam : un message d'échec ne
+             doit jamais écraser le sous-titre « Désactivé par défaut… ». -->
+        <p class="erreur-champ" id="webcam-erreur" hidden></p>
+        <div class="separateur"></div>
         <div class="ligne"><span class="lib">Forme</span>
           <div class="seg" id="webcam-forme">
             <button data-value="rond" title="Rond"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="8"/></svg></button>
@@ -167,21 +186,24 @@
         <div class="ligne"><span class="lib">Fournisseur<span class="sous" id="provider-line"></span></span>
           <button class="bouton" id="open-ai-config">Configurer…</button></div>
         <div class="avertissement" id="charge-warning" hidden></div>
+        <div class="separateur"></div>
         <div class="ligne" id="wrap-privacy_blur"><span class="lib">Flou de confidentialité<span class="sous" id="hint-privacy_blur">Masque le texte sensible</span></span>
           <label class="inter"><input type="checkbox" id="privacy_blur"><span></span></label></div>
         <div class="ligne"><span class="lib">Masquer les notifications</span>
           <label class="inter"><input type="checkbox" id="clean_canvas"><span></span></label></div>
         <div class="ligne"><span class="lib">Afficher les métriques</span>
           <label class="inter"><input type="checkbox" id="overlay"><span></span></label></div>
+        <div class="separateur"></div>
         <div class="ligne" id="wrap-subtitles"><span class="lib">Sous-titres automatiques<span class="sous" id="hint-subtitles">Transcription de la piste audio</span></span>
           <label class="inter"><input type="checkbox" id="subtitles"><span></span></label></div>
         <div class="ligne"><span class="lib">Couper les silences jusqu'à</span>
-          <span class="avec-inter"><select id="magic_cut_max" class="court">
+          <span class="avec-inter"><select id="magic_cut_max" class="court" aria-label="Durée maximale des silences coupés">
             <option>1 s</option><option>2 s</option><option>3 s</option><option>5 s</option>
             <option>10 s</option><option>30 s</option><option>Tous</option></select>
           <label class="inter"><input type="checkbox" id="magic_cut"><span></span></label></span></div>
         <div class="ligne retrait"><span class="lib">Supprimer l'original après découpe</span>
           <label class="inter"><input type="checkbox" id="delete_original"><span></span></label></div>
+        <div class="separateur"></div>
         <div class="ligne" id="wrap-subtitle_fix"><span class="lib">Corriger les sous-titres<span class="sous" id="hint-subtitle_fix">Ponctuation, noms propres, termes techniques</span></span>
           <label class="inter"><input type="checkbox" id="subtitle_fix"><span></span></label></div>
         <div class="ligne" id="wrap-summary"><span class="lib">Résumé de l'enregistrement<span class="sous" id="hint-summary">Points clés et mots-clés, dans un .md</span></span>
@@ -213,7 +235,7 @@
     <div class="feuille-entete"><h3>Fournisseur d'intelligence artificielle</h3><button class="feuille-fermer" aria-label="Fermer">✕</button></div>
     <div class="feuille-corps">
       <p class="note" id="ai-privacy"></p>
-      <div class="ligne"><span class="lib">Fournisseur</span><select id="ai-provider"></select></div>
+      <div class="ligne"><span class="lib">Fournisseur</span><select id="ai-provider" aria-label="Fournisseur"></select></div>
       <div class="ligne"><span class="lib">Modèle<span class="sous" id="ai-model-hint"></span></span><input type="text" id="ai-model" spellcheck="false" autocomplete="off"></div>
       <div class="ligne" id="ai-key-field"><span class="lib">Clé API<span class="sous">Enregistrée dans le gestionnaire d'identifiants Windows, jamais dans un fichier.</span></span>
         <input type="password" id="ai-key" spellcheck="false" autocomplete="off" placeholder="Collez votre clé"></div>

@@ -240,46 +240,111 @@ body[data-state="recording"] .widget { display: flex; }
 .voile:not([hidden]) ~ .entete, .voile:not([hidden]) ~ .scene, .voile:not([hidden]) ~ .onde-repos,
 .voile:not([hidden]) ~ .commandes, .voile:not([hidden]) ~ .pastilles { opacity: 0.45; }
 .feuille { position: absolute; left: 0; right: 0; top: 44px; bottom: 0; box-sizing: border-box; border-radius: 24px 24px 0 0; background: var(--bg-panel);
-  display: flex; flex-direction: column; padding: 18px 22px 12px;
+  display: flex; flex-direction: column; padding: 18px 14px 12px;
   box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset, 0 -12px 30px rgba(0,0,0,0.45);
   transform: translateY(100%); transition: transform 260ms var(--spring); }
 .feuille.ouverte { transform: translateY(0); }
 .feuille:not(.ouverte) { transition-duration: 200ms; }
 .poignee { position: absolute; left: 0; right: 0; top: 0; height: 18px; display: flex; justify-content: center; align-items: center; }
 .poignee span { width: 36px; height: 4px; border-radius: 2px; background: var(--border-bright); }
-.feuille-entete { display: flex; align-items: center; justify-content: space-between; height: 24px; margin-bottom: 8px; }
+/* En-tête et pied alignés sur le contenu du corps : le corps porte
+ * lui-même 8 px de marge intérieure (voir .feuille-corps), ils doivent la
+ * reprendre pour que « Réglages » et « v1.5.0 » soient sur la même
+ * verticale que les libellés. */
+.feuille-entete { display: flex; align-items: center; justify-content: space-between; min-height: 24px; margin-bottom: 6px; padding: 0 8px; }
 .feuille-entete h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .feuille-fermer { width: 24px; height: 24px; border-radius: 999px; color: var(--text-dim); font-size: 12px; }
 .feuille-fermer:hover { background: var(--bg-hover); color: var(--text); }
-.onglets { display: flex; align-items: center; gap: 14px; font-size: 11.5px; color: var(--text-dim); }
-.onglets button { color: inherit; }
+/* Barre d'onglets : le trait actif glisse d'un onglet à l'autre, posé en
+ * absolu et déplacé par le script (transform, donc pas de reflow). */
+.onglets { position: relative; display: flex; align-items: center; gap: 14px; font-size: 11.5px; color: var(--text-dim); padding-bottom: 6px; }
+.onglets button { color: inherit; border-radius: 5px; padding: 2px 2px; transition: color 160ms var(--ease-out); }
+.onglets button:hover { color: var(--text); }
 .onglets button.actif { color: var(--text); font-weight: 600; }
 .onglets button[data-tab="webcam"].actif { color: var(--accent-hi); }
-/* overflow-x caché, pas auto : la barre verticale prend de la largeur et
- * suffisait à faire apparaître une barre horizontale sous les lignes. */
-.feuille-corps { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--border-bright) transparent; }
+.onglets-trait { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; border-radius: 2px; background: var(--accent);
+  transform: translateX(0); transition: transform 280ms var(--spring), width 280ms var(--spring); pointer-events: none; }
+/* Corps défilant.
+ *
+ * Le rognage des libellés à gauche venait d'ici : la barre de défilement
+ * mangeait la marge droite, `overflow-x: hidden` coupait ce qui dépassait,
+ * et le corps n'avait de marge intérieure que d'un côté. Désormais la
+ * gouttière est réservée des DEUX côtés (`stable both-edges`), le corps a
+ * une marge intérieure symétrique, et rien ne touche plus le bord. */
+.feuille-corps { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  /* Marge intérieure symétrique et gouttière réservée des deux côtés : la
+   * barre se pose dans la gouttière de droite sans jamais rogner le
+   * contenu, et la marge de gauche est la même que celle de droite.
+   * Aucune marge négative — elle rendait au corps plus de largeur que la
+   * gouttière ne lui en prenait, et faisait revenir une barre
+   * horizontale de 2 px. La feuille compense en réduisant d'autant sa
+   * propre marge intérieure (22 → 14 px). */
+  padding: 0 8px;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin; scrollbar-color: var(--border-bright) transparent; }
+/* WebView2 est Chromium : la barre superposée se dessine ici, fine et
+ * discrète, plutôt que la barre grise épaisse par défaut. */
+.feuille-corps::-webkit-scrollbar { width: 8px; }
+.feuille-corps::-webkit-scrollbar-track { background: transparent; }
+.feuille-corps::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--border-bright); border: 2px solid transparent; background-clip: content-box; }
+.feuille-corps::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: content-box; }
 /* Une ligne masquée l'est vraiment : `display: flex` gagne sur [hidden].
  * `.puce-touche` sert aussi dans la feuille de réglages : sans cette
  * règle, la même classe y deviendrait un piège. */
 .ligne[hidden], .avertissement[hidden], .update-notes[hidden],
 .puce-touche[hidden] { display: none; }
-.feuille-pied { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); padding-top: 8px; }
+.feuille-pied { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); padding: 8px 8px 0; }
 .titre { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; color: var(--text-faint); line-height: 16px; margin: 6px 0 4px; }
 .note { margin: 0 0 8px; font-size: 11px; color: var(--text-dim); line-height: 1.4; }
 .note.offsite { color: var(--accent-hi); }
 .note.local { color: var(--ok); }
 .avertissement { font-size: 11px; color: var(--accent-hi); padding: 6px 10px; border-radius: 8px; background: var(--accent-soft); margin: 4px 0; }
 
-.ligne { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; flex: none; }
-.ligne.haute { min-height: 44px; margin-top: 4px; }
-.ligne.retrait { padding-left: 16px; }
+/* Rythme de 8 px : une ligne fait 36 px de haut au minimum et respire de
+ * 4 px de chaque côté. La marge intérieure horizontale sert aussi de zone
+ * de survol — la ligne entière s'éclaire, pas seulement son contrôle. */
+.ligne { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 36px; flex: none; padding: 4px 8px; margin: 0 -8px; border-radius: 8px;
+  transition: background 140ms var(--ease-out); }
+.ligne:hover { background: rgba(255,255,255,0.028); }
+.ligne.haute { min-height: 44px; margin-top: 2px; }
+/* Onglet Webcam : cinq lignes de contrôles serrées suivies de la ligne
+ * « Miroir / Tester ». Sans ce resserrement, la dernière ligne passait
+ * sous le pli — l'aperçu, qui est le but du bouton, devenait invisible. */
+#tab-webcam .ligne { min-height: 34px; padding-top: 2px; padding-bottom: 2px; }
+#tab-webcam .ligne.haute { min-height: 42px; }
+.ligne.retrait { padding-left: 24px; }
 .ligne.disabled { opacity: 0.45; }
-/* Bloc, pas flex : en colonne flex, chaque <span> du libellé devenait
- * un élément à part et « Volume d'entrée · 1.1 × » tombait sur trois
- * lignes. Le sous-titre est déjà un bloc, il passe dessous tout seul. */
+.ligne.disabled:hover { background: none; }
+/* Séparateur discret entre deux groupes logiques : une ligne de 1 px vaut
+ * mieux qu'un mur de rangées identiques. */
+.separateur { height: 1px; margin: 4px 0; background: var(--border); flex: none; opacity: 0.7; }
+.separateur[hidden] { display: none; }
+/* Bloc, pas colonne flex : en colonne flex, chaque <span> du libellé
+ * devenait un élément à part. Le sous-titre est déjà un bloc, il passe
+ * dessous tout seul.
+ *
+ * `white-space: normal` + `overflow-wrap` : un libellé long revient à la
+ * ligne au lieu d'être coupé. C'est le défaut « urnisseur » / « icher les
+ * métriques » vu sur les captures — le texte n'est plus jamais rogné. */
 .lib { font-size: 12.5px; color: var(--text); line-height: 16px; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sous { display: block; font-size: 10.5px; color: var(--text-faint); line-height: 13px; white-space: normal; }
+  white-space: normal; overflow-wrap: anywhere; }
+.sous { display: block; margin-top: 2px; font-size: 10.5px; color: var(--text-faint); line-height: 14px; white-space: normal; }
+/* Erreur d'un champ : petit texte rouge sous le contrôle concerné, à sa
+ * place, jamais dans le sous-titre. */
+.erreur-champ { margin: 0 0 4px; padding: 0 2px; font-size: 10.5px; line-height: 14px; color: var(--rec-hi); }
+.erreur-champ[hidden] { display: none; }
+/* Bloc glissière : libellé et valeur sur une ligne, glissière pleine
+ * largeur dessous. */
+.bloc-glissiere { display: flex; flex-direction: column; gap: 8px; padding: 8px; margin: 0 -8px; border-radius: 8px; flex: none;
+  transition: background 140ms var(--ease-out); }
+.bloc-glissiere:hover { background: rgba(255,255,255,0.028); }
+.bloc-entete { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* Puce de valeur à largeur fixe : le « × » ne peut plus tomber à la ligne
+ * et les chiffres ne font pas danser la mise en page (tabular-nums). */
+.puce-valeur { flex: none; min-width: 46px; text-align: center; padding: 2px 8px; border-radius: 6px;
+  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+  background: var(--bg-elevated); color: var(--text-dim); box-shadow: 0 0 0 1px var(--border) inset; }
 .lib.avec-inter, .avec-inter { display: flex; flex-direction: row; align-items: center; gap: 10px; white-space: normal; }
 .sous.hint-action { color: var(--accent-hi); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 /* La ligne du fournisseur dit d'un mot si les données sortent du poste */
@@ -293,27 +358,107 @@ body[data-state="recording"] .widget { display: flex; }
 .inter input:checked + span::after { transform: translateX(16px); }
 .inter input:disabled + span { cursor: default; }
 
-select, input[type="text"], input[type="password"], .liste {
-  height: 28px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 8px; border: 0; background: var(--capsule); color: var(--text);
-  box-shadow: 0 0 0 1px var(--border) inset; font: inherit; font-size: 11.5px; width: 196px; text-align: left; }
-select.court { width: 80px; }
+input[type="text"], input[type="password"], .liste {
+  height: 30px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 8px; border: 0; background: var(--capsule); color: var(--text);
+  box-shadow: 0 0 0 1px var(--border) inset; font: inherit; font-size: 11.5px; width: 196px; text-align: left;
+  transition: box-shadow 160ms var(--ease-out), background 160ms var(--ease-out); }
+input[type="text"]:hover, input[type="password"]:hover, .liste:hover { box-shadow: 0 0 0 1px var(--border-bright) inset; }
 /* Le contrôle de droite ne se comprime jamais : c'est le libellé qui
-   cède la place, en points de suspension. */
-.ligne > select, .ligne > input, .ligne > .liste, .ligne > .seg,
+   revient à la ligne. */
+.ligne > select, .ligne > .champ-liste, .ligne > input, .ligne > .liste, .ligne > .seg,
 .ligne > .coins, .ligne > .bouton, .ligne > .avec-inter, .ligne > .tester,
 .ligne > .puce-touche { flex: none; }
 .liste { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-input[type="range"] { width: 196px; accent-color: oklch(76.9% 0.166 70.1); }
-.seg { display: flex; align-items: center; height: 26px; padding: 2px; border-radius: 8px; background: var(--capsule); box-shadow: 0 0 0 1px var(--border) inset; gap: 2px; box-sizing: border-box; }
-.seg button { display: flex; align-items: center; justify-content: center; height: 22px; padding: 0 10px; border-radius: 6px; font-size: 11.5px; color: var(--text-dim); }
+
+/* ---------- Liste déroulante maison ----------
+ *
+ * Les `<select>` natifs de Windows imposent leur flèche, leur fond blanc
+ * et leur police : impossible de les accorder à la capsule. Le `<select>`
+ * reste donc dans le DOM — masqué visuellement, il demeure la source de
+ * vérité pour `value`, `add()` et `disabled` — et le script pose à côté de
+ * lui un bouton et une liste flottante qui le reflètent.
+ *
+ * `clip` plutôt que `display: none` : un champ réellement retiré du rendu
+ * ne peut plus porter le focus ni participer au formulaire. */
+select.natif-masque {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.champ-liste { position: relative; width: 196px; flex: none; }
+.champ-liste.court { width: 92px; }
+.champ-liste-bouton {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; height: 30px; box-sizing: border-box; padding: 0 8px 0 12px;
+  border-radius: 8px; background: var(--capsule); color: var(--text);
+  box-shadow: 0 0 0 1px var(--border) inset; font: inherit; font-size: 11.5px; text-align: left;
+  transition: box-shadow 160ms var(--ease-out), background 160ms var(--ease-out); }
+.champ-liste-bouton:hover:not(:disabled) { box-shadow: 0 0 0 1px var(--border-bright) inset; background: var(--bg-base); }
+.champ-liste-bouton:disabled { opacity: 0.45; cursor: default; }
+.champ-liste-valeur { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Le chevron pivote quand la liste s'ouvre : le contrôle dit son état. */
+.champ-liste-chevron { flex: none; color: var(--text-dim); transition: transform 200ms var(--spring); }
+.champ-liste.ouverte .champ-liste-chevron { transform: rotate(180deg); }
+.champ-liste.ouverte .champ-liste-bouton { box-shadow: 0 0 0 1px var(--accent) inset; }
+
+/* La liste flottante. Sa hauteur est plafonnée et le script décide, selon
+ * la place disponible, si elle tombe sous le bouton ou remonte au-dessus :
+ * la capsule fait 352 px et ne grandit pas. */
+.champ-liste-menu {
+  position: absolute; left: 0; right: 0; z-index: 40;
+  max-height: 168px; overflow-y: auto; padding: 4px;
+  border-radius: 10px; background: var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--border-bright) inset, 0 12px 28px rgba(0,0,0,0.55);
+  scrollbar-width: thin; scrollbar-color: var(--border-bright) transparent;
+  transform-origin: top center;
+  animation: liste-entree 180ms var(--ease-out); }
+.champ-liste-menu.vers-le-haut { transform-origin: bottom center; }
+@keyframes liste-entree { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.champ-liste-menu::-webkit-scrollbar { width: 8px; }
+.champ-liste-menu::-webkit-scrollbar-track { background: transparent; }
+.champ-liste-menu::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--border-bright); border: 2px solid transparent; background-clip: content-box; }
+.champ-liste-option {
+  display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 5px 8px;
+  border-radius: 6px; font-size: 11.5px; color: var(--text-dim); cursor: pointer; }
+.champ-liste-option:hover, .champ-liste-option.survol { background: var(--bg-hover); color: var(--text); }
+.champ-liste-option[aria-selected="true"] { color: var(--text); font-weight: 600; }
+/* La coche marque l'option retenue ; son emplacement est toujours réservé
+ * pour que les libellés restent alignés. */
+.champ-liste-coche { flex: none; width: 12px; height: 12px; color: var(--accent); opacity: 0; }
+.champ-liste-option[aria-selected="true"] .champ-liste-coche { opacity: 1; }
+.champ-liste-texte { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- Glissière ----------
+ * Piste et pastille dessinées à la main : `accent-color` laissait la
+ * glissière Windows, trop épaisse et d'un gris étranger à la palette. */
+input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; cursor: pointer; }
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 999px;
+  background: linear-gradient(var(--accent), var(--accent)) 0 / var(--remplissage, 50%) 100% no-repeat, var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--border) inset; }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -5px;
+  border-radius: 50%; background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.2);
+  transition: transform 140ms var(--ease-out); }
+input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.12); }
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(0.94); }
+input[type="range"]:disabled { opacity: 0.45; cursor: default; }
+.seg { display: flex; align-items: center; height: 28px; padding: 2px; border-radius: 8px; background: var(--capsule); box-shadow: 0 0 0 1px var(--border) inset; gap: 2px; box-sizing: border-box; }
+.seg button { display: flex; align-items: center; justify-content: center; height: 24px; padding: 0 10px; border-radius: 6px; font-size: 11.5px; color: var(--text-dim);
+  transition: background 140ms var(--ease-out), color 140ms var(--ease-out); }
+.seg button:hover:not(.sel) { background: rgba(255,255,255,0.05); color: var(--text); }
 .seg button.sel { background: var(--bg-elevated); color: var(--text); box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 1px 2px rgba(0,0,0,0.35); }
 .coins { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px; width: 46px; }
-.coins button { height: 11px; border-radius: 3px; background: var(--border); }
+.coins button { height: 12px; border-radius: 3px; background: var(--border); transition: background 140ms var(--ease-out); }
+.coins button:hover:not(.sel) { background: var(--border-bright); }
 .coins button.sel { background: var(--accent); }
-.bouton { height: 28px; padding: 0 14px; border-radius: 8px; display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; background: var(--bg-elevated); color: var(--text);
-  box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 0 0 1px var(--border) inset; }
+.bouton { height: 30px; padding: 0 14px; border-radius: 8px; display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; background: var(--bg-elevated); color: var(--text);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 0 0 1px var(--border) inset;
+  transition: background 140ms var(--ease-out), transform 120ms var(--ease-out); }
+.bouton:hover:not(:disabled) { background: var(--bg-hover); }
 .bouton.primaire { background: var(--accent); color: var(--capsule); box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset; }
-.bouton:active { transform: scale(0.97); }
+.bouton.primaire:hover:not(:disabled) { background: var(--accent-hi); }
+.bouton:active:not(:disabled) { transform: scale(0.97); }
 .bouton:disabled { opacity: 0.5; }
 .tester { display: flex; align-items: center; gap: 12px; }
 .apercu { width: 40px; height: 40px; overflow: hidden; background: var(--bg-elevated); flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.85), 0 4px 10px rgba(0,0,0,0.45); background-size: cover; background-position: center; }
@@ -356,6 +501,27 @@ input[type="range"] { width: 196px; accent-color: oklch(76.9% 0.166 70.1); }
 
 /* ---------- Accessibilité ---------- */
 
+/* Anneau de focus.
+ *
+ * `:focus-visible` et non `:focus` : l'anneau apparaît pour qui navigue au
+ * clavier, et pas après un clic à la souris. Il est posé par `outline`,
+ * qui se dessine par-dessus les `box-shadow` déjà utilisés partout comme
+ * bordure — un `box-shadow` de plus serait écrasé par celui du contrôle.
+ */
+:focus-visible {
+  outline: 2px solid var(--accent-hi);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* Les contrôles ronds gardent leur forme */
+.rond:focus-visible, .rec:focus-visible, .inter input:focus-visible + span,
+.coins button:focus-visible, .bande-bouton:focus-visible { border-radius: inherit; }
+.inter input:focus-visible + span { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+/* Dans la liste ouverte, c'est l'option survolée au clavier qui est
+ * marquée (`.survol`) : le focus reste sur le bouton, comme le veut le
+ * motif `aria-activedescendant`. */
+.champ-liste-option:focus-visible { outline: none; }
+
 /* Certains utilisateurs ont des troubles vestibulaires : l'animation
  * n'est pas une préférence esthétique pour eux. */
 @media (prefers-reduced-motion: reduce) {
@@ -373,4 +539,15 @@ input[type="range"] { width: 196px; accent-color: oklch(76.9% 0.166 70.1); }
   .point-rec, .anneau span { animation: none !important; }
   /* La feuille apparaît d'un coup plutôt que de glisser */
   .feuille { transition: none; }
+  /* La liste déroulante apparaît sans glisser ni s'agrandir, le trait des
+   * onglets saute d'un onglet à l'autre, la pastille de la glissière ne
+   * change plus d'échelle : dans les trois cas l'information (liste
+   * ouverte, onglet actif, valeur) reste entièrement portée par la
+   * position et la couleur. */
+  .champ-liste-menu { animation: none !important; }
+  .champ-liste-chevron, .onglets-trait { transition: none !important; }
+  input[type="range"]::-webkit-slider-thumb { transition: none !important; }
+  input[type="range"]:hover::-webkit-slider-thumb,
+  input[type="range"]:active::-webkit-slider-thumb { transform: none !important; }
+  .bouton:active:not(:disabled) { transform: none !important; }
 }
