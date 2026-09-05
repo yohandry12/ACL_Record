@@ -136,6 +136,9 @@ body[data-state="processing"] .chrono { color: var(--text); }
 .statut.error { color: var(--rec-hi); }
 .statut.ok { color: var(--ok); }
 .statut .action { color: var(--accent-hi); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+/* La puce du raccourci accompagne le statut : hors repos elle resterait
+ * seule sous le chrono, sans rien à qualifier. */
+body:not([data-state="idle"]) #hotkey { display: none; }
 .puce-touche { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: var(--bg-panel); color: var(--text-dim); box-shadow: 0 0 0 1px var(--border) inset; }
 
 .onde-repos { position: absolute; left: 60px; right: 60px; top: 172px; height: 28px; display: flex; align-items: center; justify-content: center; gap: 3px; }
@@ -225,10 +228,128 @@ body[data-state="recording"] .widget { display: flex; }
 .bande-bouton.arret span { width: 10px; height: 10px; border-radius: 2px; background: var(--text); }
 .bande-bouton:active:not(:disabled) { transform: scale(0.94); }
 
-/* --- États encore nus ---
- * Les feuilles ont leur balisage dès maintenant pour que les
- * identifiants existent, mais leur habillage arrive à la tâche 4. */
+/* --- Feuilles : glissent depuis le bas, laissent voir l'en-tête ---
+ *
+ * Pas une modale : la feuille part du bas et s'arrête sous la barre de
+ * titre. L'en-tête reste visible et atténué — on sait toujours de quelle
+ * fenêtre il s'agit, et le bandeau de saisie reste attrapable.
+ */
 .feuille[hidden], .voile[hidden] { display: none; }
+
+.voile { position: absolute; inset: 0; background: transparent; z-index: 9; }
+.voile:not([hidden]) ~ .entete, .voile:not([hidden]) ~ .scene, .voile:not([hidden]) ~ .onde-repos,
+.voile:not([hidden]) ~ .commandes, .voile:not([hidden]) ~ .pastilles { opacity: 0.45; }
+.feuille { position: absolute; left: 0; right: 0; top: 44px; bottom: 0; box-sizing: border-box; border-radius: 24px 24px 0 0; background: var(--bg-panel);
+  display: flex; flex-direction: column; padding: 18px 22px 12px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.12) inset, 0 -12px 30px rgba(0,0,0,0.45);
+  transform: translateY(100%); transition: transform 260ms var(--spring); }
+.feuille.ouverte { transform: translateY(0); }
+.feuille:not(.ouverte) { transition-duration: 200ms; }
+.poignee { position: absolute; left: 0; right: 0; top: 0; height: 18px; display: flex; justify-content: center; align-items: center; }
+.poignee span { width: 36px; height: 4px; border-radius: 2px; background: var(--border-bright); }
+.feuille-entete { display: flex; align-items: center; justify-content: space-between; height: 24px; margin-bottom: 8px; }
+.feuille-entete h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.feuille-fermer { width: 24px; height: 24px; border-radius: 999px; color: var(--text-dim); font-size: 12px; }
+.feuille-fermer:hover { background: var(--bg-hover); color: var(--text); }
+.onglets { display: flex; align-items: center; gap: 14px; font-size: 11.5px; color: var(--text-dim); }
+.onglets button { color: inherit; }
+.onglets button.actif { color: var(--text); font-weight: 600; }
+.onglets button[data-tab="webcam"].actif { color: var(--accent-hi); }
+/* overflow-x caché, pas auto : la barre verticale prend de la largeur et
+ * suffisait à faire apparaître une barre horizontale sous les lignes. */
+.feuille-corps { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--border-bright) transparent; }
+/* Une ligne masquée l'est vraiment : `display: flex` gagne sur [hidden] */
+.ligne[hidden], .avertissement[hidden], .update-notes[hidden] { display: none; }
+.feuille-pied { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); padding-top: 8px; }
+.titre { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; color: var(--text-faint); line-height: 16px; margin: 6px 0 4px; }
+.note { margin: 0 0 8px; font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+.note.offsite { color: var(--accent-hi); }
+.note.local { color: var(--ok); }
+.avertissement { font-size: 11px; color: var(--accent-hi); padding: 6px 10px; border-radius: 8px; background: var(--accent-soft); margin: 4px 0; }
+
+.ligne { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; flex: none; }
+.ligne.haute { min-height: 44px; margin-top: 4px; }
+.ligne.retrait { padding-left: 16px; }
+.ligne.disabled { opacity: 0.45; }
+/* Bloc, pas flex : en colonne flex, chaque <span> du libellé devenait
+ * un élément à part et « Volume d'entrée · 1.1 × » tombait sur trois
+ * lignes. Le sous-titre est déjà un bloc, il passe dessous tout seul. */
+.lib { font-size: 12.5px; color: var(--text); line-height: 16px; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sous { display: block; font-size: 10.5px; color: var(--text-faint); line-height: 13px; white-space: normal; }
+.lib.avec-inter, .avec-inter { display: flex; flex-direction: row; align-items: center; gap: 10px; white-space: normal; }
+.sous.hint-action { color: var(--accent-hi); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+/* La ligne du fournisseur dit d'un mot si les données sortent du poste */
+.sous .offsite { color: var(--accent-hi); }
+
+.inter { position: relative; width: 38px; height: 22px; flex: none; }
+.inter input { position: absolute; opacity: 0; width: 0; height: 0; }
+.inter span { position: absolute; inset: 0; border-radius: 999px; background: var(--border); box-shadow: 0 0 0 1px var(--border-bright) inset; cursor: pointer; transition: background 160ms var(--ease-out); }
+.inter span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.4); transition: transform 200ms var(--spring); }
+.inter input:checked + span { background: var(--accent); box-shadow: 0 1px 0 rgba(255,255,255,0.3) inset; }
+.inter input:checked + span::after { transform: translateX(16px); }
+.inter input:disabled + span { cursor: default; }
+
+select, input[type="text"], input[type="password"], .liste {
+  height: 28px; box-sizing: border-box; padding: 0 10px 0 12px; border-radius: 8px; border: 0; background: var(--capsule); color: var(--text);
+  box-shadow: 0 0 0 1px var(--border) inset; font: inherit; font-size: 11.5px; width: 196px; text-align: left; }
+select.court { width: 80px; }
+/* Le contrôle de droite ne se comprime jamais : c'est le libellé qui
+   cède la place, en points de suspension. */
+.ligne > select, .ligne > input, .ligne > .liste, .ligne > .seg,
+.ligne > .coins, .ligne > .bouton, .ligne > .avec-inter, .ligne > .tester,
+.ligne > .puce-touche { flex: none; }
+.liste { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+input[type="range"] { width: 196px; accent-color: oklch(76.9% 0.166 70.1); }
+.seg { display: flex; align-items: center; height: 26px; padding: 2px; border-radius: 8px; background: var(--capsule); box-shadow: 0 0 0 1px var(--border) inset; gap: 2px; box-sizing: border-box; }
+.seg button { display: flex; align-items: center; justify-content: center; height: 22px; padding: 0 10px; border-radius: 6px; font-size: 11.5px; color: var(--text-dim); }
+.seg button.sel { background: var(--bg-elevated); color: var(--text); box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 1px 2px rgba(0,0,0,0.35); }
+.coins { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px; width: 46px; }
+.coins button { height: 11px; border-radius: 3px; background: var(--border); }
+.coins button.sel { background: var(--accent); }
+.bouton { height: 28px; padding: 0 14px; border-radius: 8px; display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; background: var(--bg-elevated); color: var(--text);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 0 0 1px var(--border) inset; }
+.bouton.primaire { background: var(--accent); color: var(--capsule); box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset; }
+.bouton:active { transform: scale(0.97); }
+.bouton:disabled { opacity: 0.5; }
+.tester { display: flex; align-items: center; gap: 12px; }
+.apercu { width: 40px; height: 40px; overflow: hidden; background: var(--bg-elevated); flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.85), 0 4px 10px rgba(0,0,0,0.45); background-size: cover; background-position: center; }
+.apercu.forme-rond { border-radius: 50%; } .apercu.forme-carre_arrondi { border-radius: 9px; } .apercu.forme-carre { border-radius: 3px; }
+.actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.etat-action { flex: 1; font-size: 11px; color: var(--text-dim); }
+.etat-action.error { color: var(--rec-hi); } .etat-action.ok { color: var(--ok); }
+
+/* --- Extensions et plugins (repris de l'ancienne page) ---
+ *
+ * Un plugin refusé garde sa place : sa bordure rouge et son message
+ * disent pourquoi, plutôt que de le faire disparaître sans explication.
+ */
+.plugin-list { display: flex; flex-direction: column; gap: 6px; }
+.plugin-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border); }
+.plugin-item.plugin-erreur { border-color: var(--rec); }
+.plugin-info { min-width: 0; }
+.plugin-nom { font-size: 12px; font-weight: 600; }
+.plugin-detail { font-size: 11px; line-height: 1.45; color: var(--text-dim); margin-top: 2px; }
+.plugin-erreur .plugin-detail { color: var(--rec); }
+.plugin-vide { font-size: 12px; line-height: 1.5; color: var(--text-dim); text-align: center; padding: 16px 8px; }
+.ext-item .bouton { flex-shrink: 0; }
+.ext-badge { flex-shrink: 0; font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; color: var(--accent);
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent); }
+.ext-echec { color: var(--rec); }
+/* La progression d'une extension partage la barre de la mise à jour */
+.ext-progress { margin-top: 6px; }
+
+/* --- Mise à jour --- */
+.update-notes { margin: 4px 0 2px; padding: 10px 12px; max-height: 96px; overflow-y: auto; font-size: 11.5px; line-height: 1.5;
+  color: var(--text-dim); white-space: pre-wrap; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; }
+/* La feuille de mise à jour réutilise .progression de la capsule, mais
+   en ligne : la barre et son pourcentage côte à côte. */
+.feuille .progression { position: static; display: flex; flex-direction: row; align-items: center; gap: 10px; margin-top: 12px; }
+.feuille .progression[hidden] { display: none; }
+.feuille .progression .progression-piste { flex: 1; height: 6px; border-radius: 3px; }
+.feuille .progression .progression-etape { font-size: 11px; font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
 
 /* ---------- Accessibilité ---------- */
 
@@ -247,4 +368,6 @@ body[data-state="recording"] .widget { display: flex; }
   /* Le battement du décompte et la pulsation du point rouge sont
    * décoratifs : le chiffre et la couleur suffisent à les remplacer. */
   .point-rec, .anneau span { animation: none !important; }
+  /* La feuille apparaît d'un coup plutôt que de glisser */
+  .feuille { transition: none; }
 }
