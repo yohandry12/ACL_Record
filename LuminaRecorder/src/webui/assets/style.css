@@ -271,7 +271,9 @@ body[data-state="recording"] .widget { display: flex; }
  * et le corps n'avait de marge intérieure que d'un côté. Désormais la
  * gouttière est réservée des DEUX côtés (`stable both-edges`), le corps a
  * une marge intérieure symétrique, et rien ne touche plus le bord. */
-.feuille-corps { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+/* `width: 100%` et non `flex: 1` : le corps remplit le cadre qui porte le
+ * fondu, et c'est ce cadre qui prend la place dans la feuille. */
+.feuille-corps { flex: 1; width: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden;
   /* Marge intérieure symétrique et gouttière réservée des deux côtés : la
    * barre se pose dans la gouttière de droite sans jamais rogner le
    * contenu, et la marge de gauche est la même que celle de droite.
@@ -279,15 +281,48 @@ body[data-state="recording"] .widget { display: flex; }
    * gouttière ne lui en prenait, et faisait revenir une barre
    * horizontale de 2 px. La feuille compense en réduisant d'autant sa
    * propre marge intérieure (22 → 14 px). */
-  padding: 0 8px;
+  /* 8 px à gauche, 12 px à droite : la gouttière réservée mesure 10 px et
+   * la poignée en occupe 6, centrée. Avec 8 px des deux côtés, le bord
+   * droit des contrôles arrivait à 2 px sous la poignée — mesuré
+   * `recouvrement: true`. Les 4 px supplémentaires les en écartent
+   * franchement, sans décaler le contenu à gauche. */
+  padding: 0 12px 0 8px;
   scrollbar-gutter: stable both-edges;
   scrollbar-width: thin; scrollbar-color: var(--border-bright) transparent; }
-/* WebView2 est Chromium : la barre superposée se dessine ici, fine et
- * discrète, plutôt que la barre grise épaisse par défaut. */
-.feuille-corps::-webkit-scrollbar { width: 8px; }
-.feuille-corps::-webkit-scrollbar-track { background: transparent; }
-.feuille-corps::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--border-bright); border: 2px solid transparent; background-clip: content-box; }
+/* WebView2 est Chromium : la barre superposée se dessine ici. Piste
+ * entièrement transparente et poignée de 6 px : le rail clair d'origine
+ * se lisait comme un trait posé sur les lignes. */
+.feuille-corps::-webkit-scrollbar { width: 10px; background: transparent; }
+.feuille-corps::-webkit-scrollbar-track { background: transparent; border: 0; box-shadow: none; }
+.feuille-corps::-webkit-scrollbar-corner { background: transparent; }
+/* 6 px visibles : 10 px de large moins 2 px de bordure transparente de
+ * chaque côté, découpés par `content-box`. */
+.feuille-corps::-webkit-scrollbar-thumb {
+  border-radius: 999px; background: var(--border-bright);
+  border: 2px solid transparent; background-clip: content-box;
+  transition: background 160ms var(--ease-out); }
 .feuille-corps::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: content-box; }
+
+/* --- Bords de défilement en fondu ---
+ *
+ * Une ligne tranchée net au ras du pied de feuille se lit comme un défaut
+ * de mise en page, pas comme « il y a la suite ». Le contenu s'efface donc
+ * dans le fond de la feuille sur 20 px, en haut comme en bas, et seulement
+ * du côté où il reste effectivement à faire défiler — un fondu permanent
+ * sur un contenu qui tient entièrement serait un mensonge.
+ *
+ * Le conteneur porte le fondu, pas le corps défilant : posé sur ce
+ * dernier, le pseudo-élément défilerait avec le contenu au lieu de rester
+ * collé au bord. */
+.corps-cadre { position: relative; flex: 1; min-height: 0; display: flex; }
+.corps-cadre::before, .corps-cadre::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 20px;
+  pointer-events: none;            /* le fondu ne doit rien intercepter */
+  opacity: 0; transition: opacity 200ms var(--ease-out); z-index: 2; }
+.corps-cadre::before { top: 0; background: linear-gradient(to bottom, var(--bg-panel), transparent); }
+.corps-cadre::after { bottom: 0; background: linear-gradient(to top, var(--bg-panel), transparent); }
+.corps-cadre.fondu-haut::before { opacity: 1; }
+.corps-cadre.fondu-bas::after { opacity: 1; }
 /* Une ligne masquée l'est vraiment : `display: flex` gagne sur [hidden].
  * `.puce-touche` sert aussi dans la feuille de réglages : sans cette
  * règle, la même classe y deviendrait un piège. */
@@ -310,9 +345,14 @@ body[data-state="recording"] .widget { display: flex; }
 .ligne.haute { min-height: 44px; margin-top: 2px; }
 /* Onglet Webcam : cinq lignes de contrôles serrées suivies de la ligne
  * « Miroir / Tester ». Sans ce resserrement, la dernière ligne passait
- * sous le pli — l'aperçu, qui est le but du bouton, devenait invisible. */
-#tab-webcam .ligne { min-height: 34px; padding-top: 2px; padding-bottom: 2px; }
-#tab-webcam .ligne.haute { min-height: 42px; }
+ * sous le pli — l'aperçu, qui est le but du bouton, devenait invisible.
+ * La ligne haute perd son interligne superflu et l'aperçu 4 px : il reste
+ * ainsi une marge franche sous le dernier contrôle, au lieu des 2 px
+ * relevés au premier passage. */
+#tab-webcam .ligne { min-height: 32px; padding-top: 1px; padding-bottom: 1px; }
+#tab-webcam .ligne.haute { min-height: 36px; margin-top: 0; }
+#tab-webcam .apercu { width: 34px; height: 34px; }
+#tab-webcam .separateur { margin: 3px 0; }
 .ligne.retrait { padding-left: 24px; }
 .ligne.disabled { opacity: 0.45; }
 .ligne.disabled:hover { background: none; }
@@ -334,10 +374,16 @@ body[data-state="recording"] .widget { display: flex; }
  * place, jamais dans le sous-titre. */
 .erreur-champ { margin: 0 0 4px; padding: 0 2px; font-size: 10.5px; line-height: 14px; color: var(--rec-hi); }
 .erreur-champ[hidden] { display: none; }
-/* Bloc glissière : libellé et valeur sur une ligne, glissière pleine
- * largeur dessous. */
+/* Bloc glissière : libellé et valeur sur une ligne, glissière dessous.
+ *
+ * Même gouttière que les lignes voisines (marge négative de 8 px pour la
+ * zone de survol, marge intérieure de 8 px pour le contenu) : le libellé
+ * « Volume d'entrée » tombe sur la même verticale que « Son système », et
+ * la glissière ne touche plus les deux bords de la feuille. */
 .bloc-glissiere { display: flex; flex-direction: column; gap: 8px; padding: 8px; margin: 0 -8px; border-radius: 8px; flex: none;
   transition: background 140ms var(--ease-out); }
+/* La glissière s'arrête où s'arrêtent les contrôles des autres lignes */
+.bloc-glissiere input[type="range"] { margin: 0; }
 .bloc-glissiere:hover { background: rgba(255,255,255,0.028); }
 .bloc-entete { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 /* Puce de valeur à largeur fixe : le « × » ne peut plus tomber à la ligne
@@ -431,10 +477,12 @@ select.natif-masque {
  * Piste et pastille dessinées à la main : `accent-color` laissait la
  * glissière Windows, trop épaisse et d'un gris étranger à la palette. */
 input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; cursor: pointer; }
+/* Piste de 4 px : la part parcourue en ambre, le reste en `--border`.
+ * Un dégradé à arrêt net plutôt qu'un second élément — il n'existe pas de
+ * pseudo-élément « partie remplie » en CSS standard. */
 input[type="range"]::-webkit-slider-runnable-track {
   height: 4px; border-radius: 999px;
-  background: linear-gradient(var(--accent), var(--accent)) 0 / var(--remplissage, 50%) 100% no-repeat, var(--bg-elevated);
-  box-shadow: 0 0 0 1px var(--border) inset; }
+  background: linear-gradient(var(--accent), var(--accent)) 0 / var(--remplissage, 50%) 100% no-repeat, var(--border); }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -5px;
   border-radius: 50%; background: #FFFFFF;

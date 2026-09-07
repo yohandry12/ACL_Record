@@ -102,7 +102,8 @@
         <span class="onglets-trait" id="onglets-trait"></span>
       </nav>
     </div>
-    <div class="feuille-corps">
+    <!-- Le cadre porte les fondus de défilement ; le corps défile dedans. -->
+    <div class="corps-cadre"><div class="feuille-corps">
 
       <div class="onglet" id="tab-capture">
         <div class="ligne"><span class="lib">Résolution</span>
@@ -212,14 +213,14 @@
           <label class="inter"><input type="checkbox" id="thumbnails"><span></span></label></div>
       </div>
 
-    </div>
+    </div></div>
     <div class="feuille-pied"><span id="version-tag">v—</span><span id="profile"></span></div>
   </section>
 
   <section class="feuille" id="sheet-extensions" hidden>
     <div class="poignee pywebview-drag-region"><span></span></div>
     <div class="feuille-entete"><h3>Extensions</h3><button class="feuille-fermer" aria-label="Fermer">✕</button></div>
-    <div class="feuille-corps">
+    <div class="corps-cadre"><div class="feuille-corps">
       <div class="titre">FONCTIONS OFFICIELLES</div>
       <p class="note">Trop lourdes pour être livrées avec l'application, elles s'installent ici à la demande. Rien n'est téléchargé sans que vous l'ayez demandé.</p>
       <div class="plugin-list" id="extension-list"></div>
@@ -227,26 +228,26 @@
       <p class="note">Les plugins s'exécutent avec les droits de l'application et voient l'image de votre écran : n'activez que ceux dont vous connaissez l'origine.</p>
       <div class="plugin-list" id="plugin-list"></div>
       <div class="actions"><span class="etat-action" id="plugins-status"></span><button class="bouton" id="plugins-folder">Ouvrir le dossier</button></div>
-    </div>
+    </div></div>
   </section>
 
   <section class="feuille" id="sheet-ai" hidden>
     <div class="poignee pywebview-drag-region"><span></span></div>
     <div class="feuille-entete"><h3>Fournisseur d'intelligence artificielle</h3><button class="feuille-fermer" aria-label="Fermer">✕</button></div>
-    <div class="feuille-corps">
+    <div class="corps-cadre"><div class="feuille-corps">
       <p class="note" id="ai-privacy"></p>
       <div class="ligne"><span class="lib">Fournisseur</span><select id="ai-provider" aria-label="Fournisseur"></select></div>
       <div class="ligne"><span class="lib">Modèle<span class="sous" id="ai-model-hint"></span></span><input type="text" id="ai-model" spellcheck="false" autocomplete="off"></div>
       <div class="ligne" id="ai-key-field"><span class="lib">Clé API<span class="sous">Enregistrée dans le gestionnaire d'identifiants Windows, jamais dans un fichier.</span></span>
         <input type="password" id="ai-key" spellcheck="false" autocomplete="off" placeholder="Collez votre clé"></div>
       <div class="actions"><span class="etat-action" id="ai-status"></span><button class="bouton" id="ai-test">Tester</button><button class="bouton primaire" id="ai-save">Enregistrer</button></div>
-    </div>
+    </div></div>
   </section>
 
   <section class="feuille" id="sheet-update" hidden>
     <div class="poignee pywebview-drag-region"><span></span></div>
     <div class="feuille-entete"><h3>Mise à jour <span id="update-version"></span></h3><button class="feuille-fermer" aria-label="Fermer">✕</button></div>
-    <div class="feuille-corps">
+    <div class="corps-cadre"><div class="feuille-corps">
       <p class="note">Une nouvelle version de Lumina est disponible. Vos réglages et vos clés API seront conservés.</p>
       <div class="update-notes" id="update-notes" hidden></div>
       <div class="progression" id="update-progress" hidden>
@@ -254,7 +255,7 @@
         <span class="progression-etape" id="update-progress-label">0 %</span>
       </div>
       <div class="actions"><span class="etat-action" id="update-status"></span><button class="bouton" id="update-later">Plus tard</button><button class="bouton primaire" id="update-install">Installer <span id="update-size"></span></button></div>
-    </div>
+    </div></div>
   </section>
 
 </div>

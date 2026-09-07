@@ -278,9 +278,11 @@ function ouvrirFeuille(id) {
   feuille.style.zIndex = String(10 + pile.length);
   requestAnimationFrame(() => {
     feuille.classList.add('ouverte');
-    // Masquée, la barre d'onglets n'a pas de dimensions : le trait ne peut
-    // être mesuré qu'une fois la feuille rendue.
+    // Masquée, la feuille n'a pas de dimensions : ni le trait d'onglet ni
+    // les fondus ne peuvent être mesurés avant qu'elle soit rendue.
     if (id === 'sheet-settings') placerTraitOnglet();
+    const corps = feuille.querySelector('.feuille-corps');
+    if (corps) majFondus(corps);
   });
 }
 
@@ -323,6 +325,37 @@ document.addEventListener('click', (event) => {
   if (event.target.classList.contains('feuille-fermer')) fermerFeuille();
   if (event.target.id === 'voile') fermerFeuille();
 });
+
+/* ---------- Bords de défilement en fondu ----------
+ *
+ * Le fondu n'apparaît que du côté où il reste du contenu : en haut dès
+ * qu'on a défilé, en bas tant qu'on n'est pas arrivé au terme. Un fondu
+ * permanent sur un contenu qui tient entièrement laisserait croire à tort
+ * qu'il y a une suite.
+ *
+ * `Math.ceil` sur la position : les navigateurs rendent des positions
+ * fractionnaires, et une comparaison stricte laissait le fondu du bas
+ * allumé au dernier pixel du défilement. */
+function majFondus(corps) {
+  const cadre = corps && corps.closest('.corps-cadre');
+  if (!cadre) return;
+  const reste = corps.scrollHeight - corps.clientHeight;
+  const marge = 1;
+  cadre.classList.toggle('fondu-haut', corps.scrollTop > marge);
+  cadre.classList.toggle('fondu-bas', Math.ceil(corps.scrollTop) < reste - marge);
+}
+
+function majTousLesFondus() {
+  document.querySelectorAll('.feuille-corps').forEach(majFondus);
+}
+
+/* Un seul écouteur pour toutes les feuilles : `scroll` ne remonte pas,
+ * mais il se capture. */
+document.addEventListener('scroll', (event) => {
+  if (event.target.classList && event.target.classList.contains('feuille-corps')) {
+    majFondus(event.target);
+  }
+}, true);
 
 /* ---------- Liste déroulante maison ----------
  *
@@ -477,6 +510,8 @@ function ouvrirListe(liste) {
   liste.bouton.setAttribute('aria-controls', menu.id);
 
   placerMenu(liste);
+  // Le tampon de recherche ne doit pas se poursuivre d'une liste à l'autre
+  tampon = '';
   marquerOption(liste, liste.select.selectedIndex >= 0 ? liste.select.selectedIndex : 0, true);
 }
 
@@ -544,6 +579,77 @@ function choisirOption(liste, index) {
   if (change) liste.select.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
+/* ---------- Saut par première lettre ----------
+ *
+ * Ce que fait un `<select>` natif : taper « r » va au premier élément
+ * commençant par « r ». Les frappes qui se suivent à moins de 800 ms
+ * s'accumulent (« mi » cherche « Micro… »), au-delà la recherche repart
+ * de zéro. Utile dès que la liste est longue — huit micros sur cette
+ * machine.
+ *
+ * Comparaison sans accents ni casse : « Réseau » doit se trouver en
+ * tapant « re ». */
+const DELAI_FRAPPE = 800;
+let tampon = '';
+let tamponHorodatage = 0;
+
+function normaliser(texte) {
+  // ̀-ͯ : les diacritiques detaches par NFD. En echappement
+  // explicite plutot qu'en caracteres litteraux, qui ne survivent pas a
+  // un changement d'encodage du fichier.
+  return texte.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function sauterALaLettre(liste, caractere) {
+  const total = liste.options.length;
+  if (!total) return;
+
+  const lettre = normaliser(caractere);
+  const maintenant = Date.now();
+  const enchaine = maintenant - tamponHorodatage <= DELAI_FRAPPE;
+  tamponHorodatage = maintenant;
+
+  // Trois cas, dans l'ordre où Windows les traite :
+  //
+  // 1. La frappe prolonge la précédente (< 800 ms) et n'est pas une simple
+  //    répétition : le tampon s'allonge (« m » puis « i » → « mi ») et la
+  //    recherche RECOMMENCE À L'OPTION COURANTE — on affine, on ne saute
+  //    pas plus loin.
+  // 2. La même lettre est retapée : on parcourt les entrées qui commencent
+  //    par elle, en repartant APRÈS l'option courante.
+  // 3. Nouvelle recherche (délai écoulé, ou première lettre) : on cherche
+  //    depuis le début de la liste — c'est ce que fait un <select> natif,
+  //    et c'est ce qui manquait ici : partir de l'option courante faisait
+  //    répondre « Microsoft… » à un « r » alors que « Réseau » est plus
+  //    haut dans la liste.
+  const repetition = enchaine && tampon.length === 1 && tampon === lettre;
+  let cible;
+  let depart;
+  if (repetition) {
+    cible = lettre;
+    depart = liste.index + 1;
+  } else if (enchaine && tampon) {
+    tampon += lettre;
+    cible = tampon;
+    depart = liste.index;
+  } else {
+    tampon = lettre;
+    cible = lettre;
+    depart = 0;
+  }
+
+  for (let i = 0; i < total; i += 1) {
+    const j = (depart + i + total) % total;
+    if (normaliser(liste.options[j].textContent.trim()).startsWith(cible)) {
+      marquerOption(liste, j, true);
+      return;
+    }
+  }
+  // Aucune correspondance : le tampon serait un cul-de-sac pour les
+  // frappes suivantes, on le vide.
+  tampon = '';
+}
+
 function auClavier(liste, event) {
   const k = event.key;
   if (!liste.menu) {
@@ -559,7 +665,19 @@ function auClavier(liste, event) {
   else if (k === 'ArrowUp') { event.preventDefault(); marquerOption(liste, liste.index - 1, true); }
   else if (k === 'Home') { event.preventDefault(); marquerOption(liste, 0, true); }
   else if (k === 'End') { event.preventDefault(); marquerOption(liste, liste.options.length - 1, true); }
-  else if (k === 'Enter' || k === ' ') { event.preventDefault(); choisirOption(liste, liste.index); }
+  else if (k === 'Enter') { event.preventDefault(); choisirOption(liste, liste.index); }
+  // Espace choisit, sauf s'il prolonge une recherche en cours — sans quoi
+  // « son systeme » se refermerait au premier mot.
+  else if (k === ' ') {
+    event.preventDefault();
+    if (tampon && Date.now() - tamponHorodatage <= DELAI_FRAPPE) sauterALaLettre(liste, k);
+    else choisirOption(liste, liste.index);
+  }
+  // Une seule touche imprimable, sans Ctrl ni Alt : c'est une recherche
+  else if (k.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+    event.preventDefault();
+    sauterALaLettre(liste, k);
+  }
 }
 
 /* Un clic ailleurs referme : sans cela la liste resterait posée sur la
@@ -575,9 +693,12 @@ document.addEventListener('mousedown', (event) => {
 function montrerOnglet(nom) {
   document.querySelectorAll('#onglets button').forEach((b) => b.classList.toggle('actif', b.dataset.tab === nom));
   ['capture', 'audio', 'webcam', 'ia'].forEach((t) => { $('tab-' + t).hidden = (t !== nom); });
-  $('sheet-settings').querySelector('.feuille-corps').scrollTop = 0;
+  const corps = $('sheet-settings').querySelector('.feuille-corps');
+  corps.scrollTop = 0;
   fermerToutesLesListes();
   placerTraitOnglet();
+  // Le contenu vient de changer de hauteur : le fondu du bas doit suivre
+  majFondus(corps);
 }
 
 /* Trait sous l'onglet actif : mesuré, pas codé en dur — les libellés
@@ -665,6 +786,7 @@ function populateSettings(s) {
   // Les `<select>` viennent d'être remplis : les boutons habillés doivent
   // afficher la nouvelle valeur.
   rafraichirToutesLesListes();
+  majTousLesFondus();          // la hauteur du contenu a pu changer
 }
 
 /* Interrupteur de la feuille : persiste et reflète sur la pastille */
