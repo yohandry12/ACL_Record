@@ -7,6 +7,8 @@ import pytest
 from core import window_detect
 from core.window_detect import (WindowRect, window_detection_is_available,
                                  get_foreground_window_rect,
+                                 get_next_window_handle,
+                                 get_window_process_id,
                                  get_window_rect_by_handle,
                                  get_foreground_window_handle)
 
@@ -19,6 +21,8 @@ class FakeWin32Gui:
         # hwnd -> (left, top, right, bottom, title, visible, iconic)
         self.windows = {}
         self.raise_on = set()  # noms de méthodes à faire exploser
+        # hwnd -> hwnd suivant dans l'ordre Z (0 = fin de la liste)
+        self.ordre_z = {}
 
     def add_window(self, hwnd, left, top, right, bottom, title,
                     visible=True, iconic=False):
@@ -48,6 +52,11 @@ class FakeWin32Gui:
     def IsIconic(self, hwnd):
         self._maybe_raise('IsIconic')
         return self.windows[hwnd][6]
+
+    def GetWindow(self, hwnd, commande):
+        self._maybe_raise('GetWindow')
+        assert commande == 2, "seul GW_HWNDNEXT est utilisé"
+        return self.ordre_z.get(hwnd, 0)
 
 
 @pytest.fixture
@@ -178,6 +187,88 @@ def test_all_functions_none_without_win32gui(monkeypatch):
     assert get_foreground_window_rect() is None
     assert get_window_rect_by_handle(1) is None
     assert get_foreground_window_handle() is None
+    assert get_next_window_handle(1) is None
+
+
+# --- get_window_process_id ------------------------------------------------
+
+@pytest.mark.skipif(not window_detection_is_available(),
+                     reason="nécessite pywin32 et Windows")
+def test_process_id_du_handle_courant():
+    """La fenêtre appartient forcément à un processus : le PID rendu doit
+    être un entier positif. Sert au Smart Focus à reconnaître Lumina."""
+    import win32gui
+    hwnd = win32gui.GetForegroundWindow()
+    if not hwnd:
+        pytest.skip("aucune fenêtre au premier plan")
+    pid = get_window_process_id(hwnd)
+    assert pid is None or (isinstance(pid, int) and pid > 0)
+
+
+def test_process_id_handle_falsy_sans_exception():
+    assert get_window_process_id(0) is None
+    assert get_window_process_id(None) is None
+
+
+def test_process_id_handle_invalide_sans_exception():
+    """Un handle inexistant ne doit jamais faire remonter d'exception :
+    le Smart Focus dégrade, il ne casse pas l'enregistrement."""
+    pid = get_window_process_id(0xDEADBEEF)
+    assert pid is None or isinstance(pid, int)
+
+
+# --- get_next_window_handle -----------------------------------------------
+
+def test_next_window_saute_les_fenetres_rejetees(fake):
+    """Derrière la capsule de Lumina : on saute l'infobulle et la fenêtre
+    minimisée pour atteindre la première vraie application."""
+    fake.add_window(7, 500, 300, 940, 652, "Lumina Recorder")
+    fake.add_window(8, 0, 0, 60, 60, "Infobulle")          # trop petite
+    fake.add_window(9, 0, 0, 800, 600, "Minimisée", iconic=True)
+    fake.add_window(10, 0, 0, 1366, 768, "Visual Studio Code")
+    fake.ordre_z = {7: 8, 8: 9, 9: 10, 10: 0}
+
+    assert get_next_window_handle(7) == 10
+
+
+def test_next_window_saute_les_fenetres_de_notre_processus(fake, monkeypatch):
+    """Une seconde fenêtre de Lumina (boîte de dialogue, aperçu) juste
+    derrière la capsule ne doit jamais être filmée : on ne se filme pas."""
+    fake.add_window(7, 500, 300, 940, 652, "Lumina Recorder")
+    fake.add_window(8, 100, 100, 700, 500, "Lumina — aperçu")
+    fake.add_window(10, 0, 0, 1366, 768, "Visual Studio Code")
+    fake.ordre_z = {7: 8, 8: 10, 10: 0}
+    monkeypatch.setattr(window_detect, 'get_window_process_id',
+                        lambda h: os.getpid() if h in (7, 8) else 4242)
+
+    assert get_next_window_handle(7) == 10
+
+
+def test_next_window_none_en_fin_d_ordre_z(fake):
+    fake.add_window(7, 500, 300, 940, 652, "Lumina Recorder")
+    fake.ordre_z = {7: 0}
+
+    assert get_next_window_handle(7) is None
+
+
+def test_next_window_exception_donne_none(fake):
+    fake.add_window(7, 500, 300, 940, 652, "Lumina Recorder")
+    fake.ordre_z = {7: 8}
+    fake.raise_on.add('GetWindow')
+
+    assert get_next_window_handle(7) is None
+
+
+def test_next_window_handle_falsy(fake):
+    assert get_next_window_handle(0) is None
+
+
+def test_next_window_ne_boucle_pas_sur_un_cycle(fake):
+    """Sécurité : un ordre Z cyclique ne doit pas figer l'appel."""
+    fake.add_window(7, 0, 0, 60, 60, "Trop petite")
+    fake.ordre_z = {7: 7}
+
+    assert get_next_window_handle(7) is None
 
 
 # --- coordonnées négatives (fenêtre maximisée) ---------------------------

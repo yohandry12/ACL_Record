@@ -21,15 +21,31 @@ l'utilisateur clique ailleurs. On mémorise le handle au démarrage et on
 ne suit que celui-là. Si cette fenêtre disparaît (fermée, minimisée), on
 garde la dernière position connue plutôt que de sauter ailleurs.
 
+Pourquoi ne jamais se verrouiller sur Lumina
+--------------------------------------------
+L'interface « capsule » reste affichée pendant le décompte de 3 s : elle
+y dessine l'anneau du compte à rebours. Si l'utilisateur clique REC sans
+rien toucher d'autre, la fenêtre au premier plan au moment du
+verrouillage est donc Lumina elle-même. Comme la capsule est exclue de
+la capture (WDA_EXCLUDEFROMCAPTURE), la vidéo montrait alors la petite
+zone d'écran *derrière* la capsule, étirée en plein cadre — bug constaté
+sur un enregistrement 1920×1080 réduit à la zone 440×352 de la capsule.
+
+On détecte donc nos propres fenêtres par leur PID et on verrouille sur
+la fenêtre suivante dans l'ordre Z : celle que l'utilisateur voit
+derrière la capsule, c'est-à-dire celle qu'il veut filmer.
+
 Le clamping aux bornes de l'écran est fait ici : window_detect retourne
 les coordonnées brutes de Windows, où une fenêtre maximisée déborde
 typiquement de 8 px de chaque côté (bordure invisible de
 redimensionnement). Sans clamping, mss capturerait hors écran.
 """
 
+import os
 from typing import Optional
 
 from .window_detect import (WindowRect, get_foreground_window_handle,
+                            get_next_window_handle, get_window_process_id,
                             get_window_rect_by_handle,
                             window_detection_is_available)
 
@@ -89,6 +105,9 @@ class FocusTracker:
         self.monitor = monitor
         self.hwnd: Optional[int] = None
         self.window_title = ""
+        # True si le verrouillage a dû sauter la capsule de Lumina, qui
+        # était au premier plan : l'interface le dit à l'utilisateur
+        self.skipped_own_window = False
         # Taille figée au verrouillage : la sortie vidéo ne peut pas
         # changer de résolution en cours de route
         self._locked_width = 0
@@ -104,16 +123,31 @@ class FocusTracker:
     def lock_on_foreground(self) -> bool:
         """Verrouille le suivi sur la fenêtre actuellement au premier plan.
 
+        Si cette fenêtre appartient à Lumina (la capsule, restée visible
+        pendant le décompte), on lui préfère la fenêtre juste derrière
+        elle dans l'ordre Z : voir « Pourquoi ne jamais se verrouiller
+        sur Lumina » en tête de module.
+
         Returns:
             True si une fenêtre exploitable a été trouvée. False sinon —
             l'appelant doit alors enregistrer l'écran entier.
         """
+        self.skipped_own_window = False
+
         if not smart_focus_is_available():
             return False
 
         hwnd = get_foreground_window_handle()
         if hwnd is None:
             return False
+
+        if get_window_process_id(hwnd) == os.getpid():
+            # Notre propre fenêtre : elle est exclue de la capture, la
+            # filmer donnerait la zone d'écran située dessous.
+            self.skipped_own_window = True
+            hwnd = get_next_window_handle(hwnd)
+            if hwnd is None:
+                return False
 
         rect = get_window_rect_by_handle(hwnd)
         if rect is None:

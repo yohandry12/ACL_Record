@@ -649,11 +649,11 @@ class LuminaBridge:
             return {'ok': False, 'error': f"Préparation impossible : {e}"}
 
         # Décompte avant capture : l'utilisateur voit 3, 2, 1 et sait
-        # exactement quand l'enregistrement commence. Il sert aussi au
-        # Smart Focus, qui a besoin de ce délai pour que l'utilisateur
-        # clique sur sa fenêtre cible — sinon Lumina se filmerait
-        # elle-même, étant au premier plan au moment du clic. Un seul
-        # délai pour les deux besoins plutôt que deux qui s'additionnent.
+        # exactement quand l'enregistrement commence. Il laisse aussi au
+        # Smart Focus le temps d'un clic sur la fenêtre cible. Sans ce
+        # clic, la capsule est encore au premier plan à la fin du
+        # décompte : FocusTracker la reconnaît alors à son PID et prend
+        # la fenêtre juste derrière (voir core/focus_tracker.py).
         self._set_state(PENDING)
         threading.Thread(target=self._countdown, daemon=True).start()
         return {'ok': True, 'pending': True,

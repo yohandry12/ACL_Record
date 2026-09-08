@@ -469,10 +469,13 @@ class RecorderCore:
     def _lock_smart_focus(self):
         """Verrouille le Smart Focus sur la fenêtre active, si demandé.
 
-        L'appelant (l'interface) doit s'être effacé avant : sans cela, la
-        fenêtre au premier plan serait Lumina elle-même. En cas d'échec,
-        on retombe silencieusement sur l'écran entier — le Smart Focus est
-        un confort, pas une condition d'enregistrement.
+        La capsule reste affichée pendant le décompte (elle y dessine
+        l'anneau) : elle est donc souvent la fenêtre au premier plan à cet
+        instant. FocusTracker sait la reconnaître et prend la fenêtre
+        juste derrière ; on le dit alors à l'utilisateur, pour qu'il
+        comprenne quelle fenêtre est suivie. En cas d'échec, on retombe
+        silencieusement sur l'écran entier — le Smart Focus est un
+        confort, pas une condition d'enregistrement.
         """
         self._focus_tracker = None
         if not self.smart_focus_enabled:
@@ -482,7 +485,11 @@ class RecorderCore:
             tracker = FocusTracker(self.monitor)
             if tracker.lock_on_foreground():
                 self._focus_tracker = tracker
-                msg = f"Smart Focus : suivi de « {tracker.window_title} »"
+                if tracker.skipped_own_window:
+                    msg = ("Smart Focus : Lumina était au premier plan, "
+                           f"suivi de « {tracker.window_title} »")
+                else:
+                    msg = f"Smart Focus : suivi de « {tracker.window_title} »"
             else:
                 msg = "Smart Focus : aucune fenêtre détectée, écran entier"
         except Exception as e:

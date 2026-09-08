@@ -5,6 +5,8 @@ la logique de suivi et de clamping, qui doit être vérifiable sur
 n'importe quelle machine.
 """
 
+import os
+
 import pytest
 
 from core import focus_tracker
@@ -117,6 +119,78 @@ def test_verrouillage_memorise_titre_et_taille(monkeypatch, detection_active):
     assert tracker.window_title == "Firefox"
     assert tracker.current_region() == {'left': 100, 'top': 50,
                                         'width': 800, 'height': 600}
+
+
+# --- la capsule de Lumina n'est jamais la cible ---
+
+def test_fenetre_de_lumina_au_premier_plan_verrouille_celle_de_derriere(
+        monkeypatch, detection_active):
+    """Bug constaté : la capsule reste au premier plan pendant le
+    décompte. Comme elle est exclue de la capture, se verrouiller dessus
+    filmait la zone d'écran située dessous, étirée en plein cadre."""
+    rects = {
+        7: WindowRect(left=500, top=300, width=440, height=352,
+                      title="Lumina Recorder"),
+        99: WindowRect(left=0, top=0, width=1366, height=768,
+                       title="Visual Studio Code"),
+    }
+    monkeypatch.setattr(focus_tracker, 'get_foreground_window_handle',
+                        lambda: 7)
+    monkeypatch.setattr(focus_tracker, 'get_window_process_id',
+                        lambda hwnd: os.getpid())
+    monkeypatch.setattr(focus_tracker, 'get_next_window_handle',
+                        lambda hwnd: 99 if hwnd == 7 else None)
+    monkeypatch.setattr(focus_tracker, 'get_window_rect_by_handle',
+                        lambda hwnd, with_title=True: rects.get(hwnd))
+
+    tracker = FocusTracker(MONITOR)
+
+    assert tracker.lock_on_foreground() is True
+    assert tracker.hwnd == 99
+    assert tracker.window_title == "Visual Studio Code"
+    assert tracker.skipped_own_window is True
+
+
+def test_lumina_seule_au_premier_plan_echoue(monkeypatch, detection_active):
+    """Rien d'exploitable derrière la capsule : plein écran (False),
+    plutôt que de filmer la zone masquée par la capsule."""
+    monkeypatch.setattr(focus_tracker, 'get_foreground_window_handle',
+                        lambda: 7)
+    monkeypatch.setattr(focus_tracker, 'get_window_process_id',
+                        lambda hwnd: os.getpid())
+    monkeypatch.setattr(focus_tracker, 'get_next_window_handle',
+                        lambda hwnd: None)
+
+    tracker = FocusTracker(MONITOR)
+
+    assert tracker.lock_on_foreground() is False
+    assert tracker.is_locked is False
+    assert tracker.skipped_own_window is True
+
+
+def test_fenetre_d_un_autre_processus_est_verrouillee_telle_quelle(
+        monkeypatch, detection_active):
+    """Comportement inchangé quand l'utilisateur a cliqué ailleurs : on
+    ne saute surtout pas la fenêtre qu'il a choisie."""
+    appels_suivant = []
+    monkeypatch.setattr(focus_tracker, 'get_foreground_window_handle',
+                        lambda: 42)
+    monkeypatch.setattr(focus_tracker, 'get_window_process_id',
+                        lambda hwnd: os.getpid() + 1)
+    monkeypatch.setattr(focus_tracker, 'get_next_window_handle',
+                        lambda hwnd: appels_suivant.append(hwnd))
+    monkeypatch.setattr(
+        focus_tracker, 'get_window_rect_by_handle',
+        lambda hwnd, with_title=True: WindowRect(
+            left=100, top=50, width=800, height=600, title="Firefox"))
+
+    tracker = FocusTracker(MONITOR)
+
+    assert tracker.lock_on_foreground() is True
+    assert tracker.hwnd == 42
+    assert tracker.window_title == "Firefox"
+    assert tracker.skipped_own_window is False
+    assert appels_suivant == [], "aucune recherche de fenêtre suivante"
 
 
 # --- suivi ---

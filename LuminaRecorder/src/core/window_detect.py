@@ -203,6 +203,76 @@ def get_foreground_window_handle() -> Optional[int]:
     return hwnd
 
 
+def get_window_process_id(hwnd: int) -> Optional[int]:
+    """Retourne le PID du processus propriétaire de la fenêtre, ou None.
+
+    Sert au Smart Focus à reconnaître ses propres fenêtres : la capsule de
+    Lumina ne doit jamais être la cible de l'enregistrement.
+
+    Ne lève jamais d'exception : un handle invalide, une fenêtre détruite
+    entre-temps ou l'absence de pywin32 donnent None.
+    """
+    if not hwnd:
+        return None
+
+    try:
+        import win32process
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return int(pid) or None
+    except Exception:
+        pass
+
+    # Repli ctypes : win32process peut manquer là où win32gui est présent
+    try:
+        pid = ctypes.c_ulong(0)
+        ctypes.windll.user32.GetWindowThreadProcessId(
+            ctypes.c_void_p(int(hwnd)), ctypes.byref(pid))
+        return pid.value or None
+    except Exception:
+        return None
+
+
+def get_next_window_handle(hwnd: int) -> Optional[int]:
+    """Handle de la première fenêtre exploitable *derrière* `hwnd`.
+
+    Parcourt l'ordre Z (GW_HWNDNEXT) à partir de `hwnd` et retourne la
+    première fenêtre visible, non minimisée, au titre non vide et qui
+    passe les filtres de rejet communs. Retourne None si le parcours
+    atteint la fin sans rien trouver.
+
+    Utilisé quand la fenêtre au premier plan est Lumina elle-même : la
+    fenêtre que l'utilisateur voit derrière la capsule est celle qu'il
+    veut filmer.
+
+    Ne lève jamais d'exception.
+    """
+    if win32gui is None or not hwnd:
+        return None
+
+    # GW_HWNDNEXT = 2 ; la constante vit dans win32con, qu'on ne veut pas
+    # importer ici (ce module doit rester importable sans pywin32 complet)
+    GW_HWNDNEXT = 2
+
+    try:
+        courant = hwnd
+        # Borne de sécurité : l'ordre Z d'une session Windows compte au
+        # plus quelques centaines de fenêtres de haut niveau. Une boucle
+        # sans borne se figerait si l'API renvoyait un cycle.
+        for _ in range(500):
+            courant = win32gui.GetWindow(courant, GW_HWNDNEXT)
+            if not courant:
+                return None
+            # Une autre fenêtre de Lumina (aperçu, boîte de dialogue)
+            # pourrait se trouver juste derrière : on ne se filme jamais
+            if get_window_process_id(courant) == os.getpid():
+                continue
+            if get_window_rect_by_handle(courant) is not None:
+                return courant
+        return None
+    except Exception:
+        return None
+
+
 def get_foreground_window_rect() -> Optional[WindowRect]:
     """Retourne le WindowRect de la fenêtre au premier plan, ou None."""
     if win32gui is None:
