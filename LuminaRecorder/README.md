@@ -14,7 +14,7 @@ Application d'enregistrement d'écran professionnelle pour Windows, avec intelli
 - ✅ **Enregistrement HD/4K** : Jusqu'à 3840x2160 @ 60 FPS
 - ✅ **Encodage Optimisé** : FFmpeg H.264 avec contrôle du bitrate
 - ✅ **Volume Audio Réglable** : Curseur 0.1x - 2.0x (défaut 0.5x)
-- ✅ **Interface Moderne** : Design épuré avec couleurs Lumina
+- ✅ **Interface « capsule »** : fenêtre sans bordure Windows, qui se réduit en widget pendant la capture. Les réglages tiennent dans une feuille à onglets derrière l'engrenage. L'ancienne interface reste accessible avec `--classic`.
 - ✅ **Système de Mise à Jour** : Vérification automatique
 
 ### 🔮 Futures Phases
@@ -44,7 +44,12 @@ LuminaRecorder/
 │   │   ├── recorder_core.py   # Capture écran/audio
 │   │   └── encoder.py         # Encodage FFmpeg
 │   │
-│   ├── ui/                    # Interface utilisateur
+│   ├── webui/                 # Interface « capsule » (PyWebView)
+│   │   ├── app.py             # Fenêtre sans bordure
+│   │   ├── bridge.py          # Pont Python ↔ page
+│   │   └── assets/            # index.html, style.css, app.js
+│   │
+│   ├── ui/                    # Interface classique (--classic)
 │   │   ├── main_window.py     # Fenêtre principale
 │   │   └── components.py      # Composants UI
 │   │

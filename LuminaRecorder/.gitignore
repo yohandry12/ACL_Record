@@ -1,3 +1,4 @@
 dist_extensions/
 dist_installer/
 tools/*.jpg
+tools/*.png

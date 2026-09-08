@@ -135,14 +135,15 @@ Les installations existantes détectent la nouvelle version seules
 pièce jointe dont le nom contient « setup » et finit par `.exe`).
 
 Le corps de la release sert de notes de version : il est affiché tel
-quel dans la fenêtre de mise à jour.
+quel dans la feuille « Mise à jour » de la capsule.
 
 ## Migration depuis une version où l'IA était embarquée
 
 Un utilisateur en 1.3.0 a Whisper et l'OCR dans son programme. En 1.4.0
 ils n'y sont plus. Ses cases se grisent — d'où `get_extensions()` et
-`install_extension()` dans le pont, qui laissent le panneau proposer
-l'installation plutôt que de le laisser sans recours.
+`install_extension()` dans le pont, qui laissent la feuille
+« Extensions » proposer l'installation plutôt que de le laisser sans
+recours.
 
 Les réglages, clés API et plugins ne sont pas touchés : ils vivent dans
 `%LOCALAPPDATA%\LuminaRecorder\`, que le désinstallateur préserve.
