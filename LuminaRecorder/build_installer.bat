@@ -129,6 +129,7 @@ pyinstaller ^
     --hidden-import=packaging ^
     --hidden-import=pyaudiowpatch ^
     --hidden-import=win32gui ^
+    --hidden-import=win32process ^
     --hidden-import=wave ^
     --hidden-import=audioop ^
     --hidden-import=configparser ^

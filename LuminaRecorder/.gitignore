@@ -2,3 +2,6 @@ dist_extensions/
 dist_installer/
 tools/*.jpg
 tools/*.png
+assets/*.mp4
+assets/*.mjpeg
+assets/*.wav

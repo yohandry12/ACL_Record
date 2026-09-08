@@ -77,16 +77,19 @@ function applyState(next) {
   document.body.dataset.state = next;
   $('record').disabled = (next === 'processing');
   $('record').title = next === 'idle' ? "Commencer l'enregistrement (F9)" : "Arrêter l'enregistrement (F9)";
+  // La vidéo n'a plus besoin de l'onde ni de l'aperçu dès que la capture
+  // s'arrête ; l'encodage veut le processeur, pas un rAF qui tourne sur
+  // un canvas caché ni un JPEG base64 qui traîne en mémoire.
+  if (next !== 'recording') {
+    stopWave();
+    $('widget-cam').hidden = true;
+    $('widget-cam-img').removeAttribute('src');
+  }
   if (next === 'idle') {
     $('timer').textContent = '00:00';
     updateWidgetTime(0);
     $('widget-size').textContent = '≈ 0 Mo';
     $('progress-bar').style.width = '0%';
-    stopWave();
-    // La dernière image de la session précédente ne doit pas réapparaître
-    // une fraction de seconde au début de la suivante
-    $('widget-cam').hidden = true;
-    $('widget-cam-img').removeAttribute('src');
     // Le traitement a fait taire le statut par setStatus('') : sans
     // cette ligne la puce resterait masquée au retour au repos, aucune
     // minuterie n'étant en attente pour la rendre.
@@ -745,6 +748,7 @@ function populateSettings(s) {
     device.add(new Option('Aucun microphone détecté', '-1')); device.disabled = true;
     $('mic').checked = false; $('mic').disabled = true;
   } else {
+    device.disabled = false; $('mic').disabled = false;
     s.audio.devices.forEach((d) => device.add(new Option(d.name + (d.is_default ? ' (défaut)' : ''), String(d.index))));
     const sel = s.audio.selected_device;
     device.value = String(sel >= 0 ? sel : ((s.audio.devices.find((d) => d.is_default) || s.audio.devices[0]).index));
@@ -1292,16 +1296,16 @@ async function saveAiConfig() {
 
   setAiStatus('Enregistrement…');
   const choix = await call('set_ai_provider', provider, model);
-  if (!choix.ok) {
-    setAiStatus(choix.error || 'Échec', 'error');
+  if (!choix || !choix.ok) {
+    setAiStatus((choix && choix.error) || 'Échec', 'error');
     return;
   }
 
   // Champ laissé vide : la clé déjà enregistrée est conservée
   if (key) {
     const resultat = await call('set_ai_key', provider, key);
-    if (!resultat.ok) {
-      setAiStatus(resultat.error || 'Échec', 'error');
+    if (!resultat || !resultat.ok) {
+      setAiStatus((resultat && resultat.error) || 'Échec', 'error');
       return;
     }
     aiConfig = resultat.config;
@@ -1319,8 +1323,8 @@ async function saveAiConfig() {
 async function testAiProvider() {
   setAiStatus('Test en cours…');
   const resultat = await call('test_ai_provider');
-  setAiStatus(resultat.ok ? 'Réponse : ' + resultat.answer : (resultat.error || 'Échec'),
-              resultat.ok ? 'ok' : 'error');
+  setAiStatus((resultat && resultat.ok) ? 'Réponse : ' + resultat.answer : ((resultat && resultat.error) || 'Échec'),
+              (resultat && resultat.ok) ? 'ok' : 'error');
 }
 
 /* Les deux options qui dependent d'un fournisseur peuvent devenir
