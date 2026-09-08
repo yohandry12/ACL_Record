@@ -5,8 +5,92 @@ Ouvre la fenêtre PyWebView, y branche le pont, et gère le cycle de vie.
 Toute la logique vit dans bridge.py ; ce module ne fait que l'assembler.
 """
 
+import os
+import shutil
 import sys
 from pathlib import Path
+
+
+def webview_storage_path() -> Path:
+    """Dossier du profil WebView2, fixe et propre à l'utilisateur.
+
+    Un profil fixe évite le dossier temporaire du mode privé, que
+    pywebview tente de supprimer à la fermeture alors que Crashpad
+    (le collecteur de plantages de WebView2) tient encore
+    « EBWebView\\CrashpadMetrics-active.pma » ouvert : d'où le
+    « [pywebview] Failed to delete user data folder: [WinError 5] » à
+    chaque sortie.
+    """
+    base = os.environ.get('LOCALAPPDATA')
+    racine = Path(base) if base else Path.home() / 'AppData' / 'Local'
+    return racine / 'LuminaRecorder' / 'webview'
+
+
+def purger_profil_webview_si_nouvelle_version(storage_path, version) -> bool:
+    """Vide le profil WebView2 si la version de Lumina a changé.
+
+    Remplace le profil jetable : un profil persistant a servi une page
+    périmée après une mise à jour (WebView2 gardait l'index.html en
+    cache et l'utilisateur voyait l'ancienne interface). On purge donc
+    au changement de version uniquement, et **avant** la création de la
+    fenêtre : à cet instant aucun fichier n'est encore verrouillé.
+
+    Toute erreur est tolérée et journalisée : un profil qu'on n'a pas pu
+    purger n'est pas une raison d'empêcher l'application de démarrer.
+
+    Returns:
+        True si le profil a effectivement été purgé.
+    """
+    dossier = Path(storage_path)
+    marqueur = dossier / 'version.txt'
+
+    try:
+        dossier.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"[Lumina] Profil WebView2 inaccessible ({e})")
+        return False
+
+    try:
+        connue = marqueur.read_text(encoding='utf-8').strip()
+    except Exception:
+        # Fichier absent, illisible ou verrouillé : on considère le
+        # profil comme périmé, c'est le choix sûr
+        connue = None
+
+    if connue == str(version):
+        return False
+
+    purge = False
+    for entree in _contenu(dossier):
+        if entree.name == marqueur.name:
+            continue
+        try:
+            if entree.is_dir():
+                shutil.rmtree(entree, ignore_errors=True)
+            else:
+                entree.unlink()
+            purge = True
+        except Exception as e:
+            print(f"[Lumina] Profil WebView2 : « {entree.name} » "
+                  f"non supprimé ({e})")
+
+    try:
+        marqueur.write_text(str(version), encoding='utf-8')
+    except Exception as e:
+        print(f"[Lumina] Profil WebView2 : version non écrite ({e})")
+
+    if purge:
+        print(f"[Lumina] Profil WebView2 purgé "
+              f"(version {connue!r} → {version})")
+    return purge
+
+
+def _contenu(dossier: Path) -> list:
+    """Entrées du dossier, liste vide si illisible (jamais d'exception)."""
+    try:
+        return list(dossier.iterdir())
+    except Exception:
+        return []
 
 
 def assets_dir() -> Path:
@@ -70,7 +154,14 @@ def run() -> int:
     """Lance l'interface web. Retourne un code de sortie."""
     import webview
 
+    from version import __version__
     from webui.bridge import LuminaBridge
+
+    # Profil fixe, purgé au changement de version : voir
+    # purger_profil_webview_si_nouvelle_version. La purge a lieu ICI,
+    # avant create_window : passé ce point WebView2 tient ses fichiers.
+    storage_path = webview_storage_path()
+    purger_profil_webview_si_nouvelle_version(storage_path, __version__)
 
     bridge = LuminaBridge()
     index = assets_dir() / 'index.html'
@@ -117,10 +208,13 @@ def run() -> int:
 
     window.events.closing += on_closing
 
-    # Profil jetable : la page est locale, il n'y a rien à conserver
-    # entre deux lancements (aucun cookie, aucune session). Un profil
-    # persistant a servi une page périmée après mise à jour — constaté
-    # pendant le développement : WebView2 gardait l'index.html mis en
-    # cache et l'utilisateur voyait l'ancienne interface.
-    webview.start(on_start, private_mode=True)
+    # Profil fixe plutôt que jetable : en mode privé, pywebview
+    # crée un profil temporaire qu'il supprime à la sortie, alors que
+    # Crashpad tient encore CrashpadMetrics-active.pma — d'où le
+    # « Failed to delete user data folder: [WinError 5] » à chaque
+    # fermeture. La page périmée après mise à jour, motif initial du
+    # profil jetable, est traitée par la purge au changement de version
+    # faite plus haut.
+    webview.start(on_start, private_mode=False,
+                  storage_path=str(storage_path))
     return 0

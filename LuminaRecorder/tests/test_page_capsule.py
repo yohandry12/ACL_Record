@@ -6,6 +6,9 @@ Electron ignorée par WebView2)."""
 import re
 from pathlib import Path
 
+from webui.app import (purger_profil_webview_si_nouvelle_version,
+                       webview_storage_path)
+
 ASSETS = Path(__file__).parent.parent / 'src' / 'webui' / 'assets'
 
 IDS_ATTENDUS = [
@@ -74,13 +77,113 @@ def test_les_zones_de_saisie_existent():
     assert html.count('pywebview-drag-region') >= 3
 
 
-def test_le_profil_webview_est_jetable():
-    """Un profil WebView2 persistant a servi une page périmée après une
-    mise à jour : la page est locale, il n'y a rien à conserver."""
+def test_le_profil_webview_est_fixe():
+    """Le profil jetable (private_mode=True) faisait échouer sa propre
+    suppression à la sortie : Crashpad tient encore
+    CrashpadMetrics-active.pma, d'où « [WinError 5] ». On utilise un
+    profil fixe, purgé au changement de version."""
     source = (Path(__file__).parent.parent / 'src' / 'webui' / 'app.py'
               ).read_text(encoding='utf-8')
-    assert 'private_mode=True' in source
-    assert 'private_mode=False' not in source
+    assert 'private_mode=True' not in source
+    assert 'private_mode=False' in source
+    assert 'storage_path=' in source
+
+
+# --- purge du profil WebView2 au changement de version ------------------
+
+def test_le_profil_est_purge_quand_la_version_change(tmp_path):
+    """Motif du profil jetable à l'origine : après une mise à jour,
+    WebView2 servait l'index.html mis en cache."""
+    (tmp_path / 'version.txt').write_text('1.4.0', encoding='utf-8')
+    cache = tmp_path / 'EBWebView'
+    cache.mkdir()
+    (cache / 'index-perime.html').write_text('vieux', encoding='utf-8')
+
+    assert purger_profil_webview_si_nouvelle_version(tmp_path, '1.5.0') is True
+    assert not cache.exists()
+    assert (tmp_path / 'version.txt').read_text(encoding='utf-8') == '1.5.0'
+
+
+def test_le_profil_est_conserve_a_version_egale(tmp_path):
+    """Un lancement ordinaire ne doit rien purger : le profil sert au
+    cache et évite de tout recharger à chaque démarrage."""
+    (tmp_path / 'version.txt').write_text('1.5.0', encoding='utf-8')
+    cache = tmp_path / 'EBWebView'
+    cache.mkdir()
+    (cache / 'utile.dat').write_text('garder', encoding='utf-8')
+
+    assert purger_profil_webview_si_nouvelle_version(tmp_path, '1.5.0') is False
+    assert (cache / 'utile.dat').exists()
+
+
+def test_profil_sans_marqueur_est_purge(tmp_path):
+    """Premier lancement après la bascule depuis le profil jetable."""
+    cache = tmp_path / 'EBWebView'
+    cache.mkdir()
+    (cache / 'vieux.dat').write_text('x', encoding='utf-8')
+
+    assert purger_profil_webview_si_nouvelle_version(tmp_path, '1.5.0') is True
+    assert (tmp_path / 'version.txt').read_text(encoding='utf-8') == '1.5.0'
+
+
+def test_dossier_absent_est_cree_sans_lever(tmp_path):
+    cible = tmp_path / 'pas-encore' / 'webview'
+
+    purger_profil_webview_si_nouvelle_version(cible, '1.5.0')
+
+    assert cible.is_dir()
+    assert (cible / 'version.txt').exists()
+
+
+def test_un_fichier_verrouille_ne_fait_pas_lever(tmp_path, monkeypatch):
+    """Cas réel : Crashpad tient un fichier ouvert. La purge doit se
+    poursuivre et le démarrage ne jamais être bloqué."""
+    (tmp_path / 'version.txt').write_text('1.4.0', encoding='utf-8')
+    (tmp_path / 'verrouille.pma').write_text('x', encoding='utf-8')
+    (tmp_path / 'libre.dat').write_text('x', encoding='utf-8')
+
+    vrai_unlink = Path.unlink
+
+    def unlink_recalcitrant(self, *a, **kw):
+        if self.name == 'verrouille.pma':
+            raise PermissionError(5, "Accès refusé")
+        return vrai_unlink(self, *a, **kw)
+
+    monkeypatch.setattr(Path, 'unlink', unlink_recalcitrant)
+
+    # Ne lève pas, et purge quand même ce qui est libérable
+    purger_profil_webview_si_nouvelle_version(tmp_path, '1.5.0')
+
+    assert not (tmp_path / 'libre.dat').exists()
+    assert (tmp_path / 'verrouille.pma').exists()
+
+
+def test_marqueur_illisible_est_traite_comme_perime(tmp_path, monkeypatch):
+    """Un version.txt qu'on ne peut pas lire ne doit pas empêcher la
+    purge : le choix sûr est de considérer le profil périmé."""
+    (tmp_path / 'version.txt').write_text('1.5.0', encoding='utf-8')
+    (tmp_path / 'cache.dat').write_text('x', encoding='utf-8')
+
+    vrai_read = Path.read_text
+
+    def read_recalcitrant(self, *a, **kw):
+        if self.name == 'version.txt':
+            raise PermissionError(5, "Accès refusé")
+        return vrai_read(self, *a, **kw)
+
+    monkeypatch.setattr(Path, 'read_text', read_recalcitrant)
+
+    assert purger_profil_webview_si_nouvelle_version(tmp_path, '1.5.0') is True
+    assert not (tmp_path / 'cache.dat').exists()
+
+
+def test_le_profil_vit_dans_localappdata(monkeypatch):
+    monkeypatch.setenv('LOCALAPPDATA', r'C:\Users\test\AppData\Local')
+
+    chemin = webview_storage_path()
+
+    assert chemin.name == 'webview'
+    assert chemin.parent.name == 'LuminaRecorder'
 
 
 def test_aucune_ressource_distante():
