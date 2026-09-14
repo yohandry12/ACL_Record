@@ -250,3 +250,49 @@ def test_sans_filtre_webcam_la_chaine_est_inchangee():
     filtres = AIOptions.build_filters({'clean_canvas': True},
                                       webcam_filter=None)
     assert len(filtres) == 1
+
+
+def test_le_filtre_curseur_vient_apres_les_natifs_et_avant_les_plugins(monkeypatch):
+    """Après Clean Canvas (sinon le pointeur serait masqué avec les
+    notifications), avant les plugins et la webcam (la vignette reste
+    au-dessus)."""
+    from core import ai_options
+    from filters.base import FrameFilter
+
+    class FauxPlugin(FrameFilter):
+        name = "Faux"
+
+        def process(self, frame):
+            return frame
+
+    class FauxCurseur(FrameFilter):
+        name = "cursor"
+
+        def process(self, frame):
+            return frame
+
+    class FausseWebcam(FrameFilter):
+        name = "webcam"
+
+        def process(self, frame):
+            return frame
+
+    monkeypatch.setattr(ai_options, 'lister_plugins',
+                        lambda: [_info_plugin()])
+    monkeypatch.setattr(ai_options, 'charger_plugin', lambda i: FauxPlugin())
+    curseur = FauxCurseur()
+    webcam = FausseWebcam()
+
+    filtres = AIOptions.build_filters({'clean_canvas': True},
+                                      plugins_actifs=['faux'],
+                                      webcam_filter=webcam,
+                                      cursor_filter=curseur)
+
+    assert [f.name for f in filtres] == ["clean_canvas", "cursor", "Faux",
+                                         "webcam"]
+
+
+def test_sans_filtre_curseur_la_chaine_est_inchangee():
+    filtres = AIOptions.build_filters({'clean_canvas': True},
+                                      cursor_filter=None)
+    assert len(filtres) == 1

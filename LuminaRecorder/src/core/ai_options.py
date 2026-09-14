@@ -60,7 +60,7 @@ class AIOptions:
 
     @staticmethod
     def build_filters(options: dict, plugins_actifs=None,
-                      webcam_filter=None) -> list:
+                      webcam_filter=None, cursor_filter=None) -> list:
         filters = []
         # Sans moteur OCR, le flou n'a aucune zone à masquer : on n'ajoute
         # pas un filtre inerte, même si le .ini garde la valeur d'une
@@ -71,6 +71,13 @@ class AIOptions:
             filters.append(CleanCanvasFilter())
         if options.get('overlay'):
             filters.append(OverlayFilter())
+
+        # Le pointeur après les filtres natifs : ni flouté par l'OCR, ni
+        # masqué avec les notifications par Clean Canvas. Avant les
+        # plugins, qui reçoivent une image « finie » ; avant la webcam,
+        # pour que la vignette reste au-dessus.
+        if cursor_filter is not None:
+            filters.append(cursor_filter)
 
         # Plugins de l'utilisateur, APRÈS les filtres natifs : ils
         # travaillent sur une image déjà nettoyée. Un plugin qui refuse
