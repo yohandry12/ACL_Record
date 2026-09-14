@@ -289,6 +289,37 @@ def test_disponibilite_suit_le_systeme(monkeypatch):
     assert cursor_is_available() is False
 
 
+class _FauxUser32:
+    """user32 factice : GetAsyncKeyState rend la valeur programmée."""
+
+    def __init__(self, etats):
+        self.etats = etats            # code de touche -> valeur c_short
+
+    def GetAsyncKeyState(self, vk):
+        return self.etats.get(vk, 0)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason="sonde Win32")
+@pytest.mark.parametrize('gauche, droit, attendu', [
+    (0, 0, False),
+    (-32768, 0, True),        # 0x8000 : enfoncé maintenant (c_short signé)
+    (0, -32768, True),
+    (1, 0, True),             # 0x0001 : pressé depuis le dernier appel
+    (0, 1, True),             # clic droit bref
+    (-32767, 0, True),        # les deux bits
+])
+def test_la_sonde_retient_un_clic_plus_court_qu_un_sondage(gauche, droit,
+                                                             attendu):
+    """Constaté sur un enregistrement réel : à ~15 images/s, un clic de
+    50-80 ms passait entre deux sondages du bit « enfoncé ». Le bit
+    « pressé depuis le dernier appel » doit suffire à ouvrir le halo."""
+    from filters.cursor_filter import SondeWin32
+    sonde = SondeWin32()
+    sonde._u = _FauxUser32({SondeWin32.VK_LBUTTON: gauche,
+                            SondeWin32.VK_RBUTTON: droit})
+    assert sonde.bouton_presse() is attendu
+
+
 @pytest.mark.skipif(os.name != 'nt', reason="sonde Win32")
 def test_la_sonde_reelle_repond_avec_les_bons_types():
     """Seul test qui touche Win32 : types cohérents, pas de valeur."""

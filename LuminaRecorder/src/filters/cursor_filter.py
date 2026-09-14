@@ -5,16 +5,21 @@ mss ne capture pas le pointeur de la souris : sans ce filtre, une vidéo
 Lumina n'a aucun pointeur, ce qui rend un tutoriel difficile à suivre.
 
 Le pointeur est dessiné en vectoriel (cv2) à la position lue par Win32,
-sous trois formes (flèche, barre de texte, main) choisies d'après le
-curseur système courant. Un halo ambre s'ouvre à chaque clic.
+sous deux formes (flèche, barre de texte) choisies d'après le curseur
+système courant. Un halo ambre s'ouvre à chaque clic.
 
 Pourquoi ctypes et le sondage plutôt qu'un hook souris
 -------------------------------------------------------
 Un hook WH_MOUSE_LL intercepte toute la souris du système : suspect pour
 un antivirus, et fragile (Windows le retire s'il répond trop lentement).
-Lire GetAsyncKeyState à chaque image suffit : un clic tient 80 à 100 ms,
-une image 33 ms. Un clic plus court qu'une image peut être manqué, c'est
-accepté.
+On lit GetAsyncKeyState à chaque image. Le bit 0x8000 (« enfoncé
+maintenant ») ne suffit pas : la capture réelle tourne autour de 15
+images par seconde, soit un sondage toutes les 65 ms, et un clic de
+50 à 80 ms passait entre deux sondages — constaté sur un enregistrement
+où un clic sur deux n'avait pas de halo. On lit donc aussi le bit
+0x0001 (« pressé depuis le dernier appel »), qui retient un clic même
+bref. Réserve : un autre processus qui interroge le même bouton peut
+consommer ce bit ; en pratique rare, et le bit 0x8000 reste en secours.
 
 Les coordonnées de GetCursorPos sont physiques parce que le processus
 est déclaré DPI-aware (window_detect.enable_dpi_awareness) : ce sont
@@ -23,9 +28,11 @@ les mêmes pixels que la région mss.
 Pourquoi le vectoriel et pas la bitmap Windows
 ----------------------------------------------
 DrawIconEx dans un DC puis conversion en numpy coûte plus que le budget
-d'une image et dépend du thème. Trois formes dessinées suffisent à
-suivre un tutoriel : flèche, barre de texte dans un champ, main sur un
-lien. Toute autre forme (attente, redimensionnement) est une flèche.
+d'une image et dépend du thème. Deux formes dessinées suffisent à
+suivre un tutoriel : flèche, et barre de texte dans un champ. Toute
+autre forme (main sur un lien, attente, redimensionnement) est une
+flèche : une main stylisée en quelques pixels ressemblait à un bloc
+blanc, la flèche est lisible partout.
 """
 
 import ctypes
@@ -47,7 +54,12 @@ EPAISSEUR_HALO = 3
 OPACITE_HALO = 0.9
 HAUTEUR_POINTEUR = 19          # px : flèche Windows à 100 %
 
-FORMES = ('fleche', 'texte', 'main')
+FORMES = ('fleche', 'texte')
+
+# GetAsyncKeyState : bit « enfoncé maintenant » et bit « pressé depuis
+# le dernier appel ». Le second retient un clic plus court qu'un sondage.
+_BOUTON_ENFONCE = 0x8000
+_BOUTON_PRESSE_DEPUIS = 0x0001
 
 BLANC = (255, 255, 255)
 NOIR = (0, 0, 0)
@@ -83,7 +95,6 @@ class SondeWin32:
     VK_RBUTTON = 0x02
     CURSOR_SHOWING = 0x00000001
     IDC_IBEAM = 32513
-    IDC_HAND = 32649
 
     def __init__(self):
         u = ctypes.windll.user32
@@ -99,7 +110,6 @@ class SondeWin32:
         self._u = u
         self._formes = {
             u.LoadCursorW(None, self.IDC_IBEAM): 'texte',
-            u.LoadCursorW(None, self.IDC_HAND): 'main',
         }
 
     def position(self) -> Tuple[int, int]:
@@ -120,7 +130,7 @@ class SondeWin32:
     def bouton_presse(self) -> bool:
         etat = (self._u.GetAsyncKeyState(self.VK_LBUTTON)
                 | self._u.GetAsyncKeyState(self.VK_RBUTTON))
-        return bool(etat & 0x8000)
+        return bool(etat & (_BOUTON_ENFONCE | _BOUTON_PRESSE_DEPUIS))
 
 
 # --- dessin ------------------------------------------------------------------
@@ -145,20 +155,6 @@ def _dessiner_pointeur(frame: np.ndarray, x: int, y: int, forme: str,
             # LINE_8 (pas LINE_AA) : le trait blanc garde un cœur à 255,
             # l'anticrénelage du contour noir en dessous suffit au rendu
             cv2.line(frame, a, b, BLANC, 1, cv2.LINE_8)
-        return
-
-    if forme == 'main':
-        # Index pointé en (x, y), paume dessous : deux rectangles
-        doigt = max(2, int(2 * echelle))
-        haut_paume = y + int(8 * echelle)
-        bas_paume = y + int(17 * echelle)
-        for couleur, marge in ((NOIR, 1), (BLANC, 0)):
-            cv2.rectangle(frame, (x - doigt - marge, y - marge),
-                          (x + doigt + marge, haut_paume + marge),
-                          couleur, -1)
-            cv2.rectangle(frame, (x - int(6 * echelle) - marge, haut_paume - marge),
-                          (x + int(7 * echelle) + marge, bas_paume + marge),
-                          couleur, -1)
         return
 
     # 'fleche' et toute forme inconnue

@@ -49,14 +49,24 @@ vignette reste au-dessus.
   - `position() -> (x, y)` en pixels physiques (le processus est
     DPI-aware via `enable_dpi_awareness`, donc les mêmes pixels que la
     région mss) ;
-  - `forme() -> 'fleche' | 'texte' | 'main' | None` : `None` si le
+  - `forme() -> 'fleche' | 'texte' | None` : `None` si le
     système masque le pointeur (`CURSOR_SHOWING` absent, par exemple
     pendant la saisie ou une vidéo plein écran). La forme vient de
-    `GetCursorInfo().hCursor` comparé aux handles de
-    `LoadCursorW(None, IDC_ARROW | IDC_IBEAM | IDC_HAND)` ; tout autre
-    handle donne `'fleche'` ;
+    `GetCursorInfo().hCursor` comparé au handle de
+    `LoadCursorW(None, IDC_IBEAM)` ; tout autre handle (flèche, main,
+    attente…) donne `'fleche'` ;
   - `bouton_presse() -> bool` : `GetAsyncKeyState(VK_LBUTTON)` ou
-    `VK_RBUTTON`, bit 0x8000.
+    `VK_RBUTTON`, bits 0x8000 (« enfoncé maintenant ») **ou** 0x0001
+    (« pressé depuis le dernier appel »).
+
+*Révision du 14 septembre, après vérification sur un enregistrement
+réel* : la forme « main » (deux rectangles) ressemblait à un bloc
+blanc, elle est retirée au profit de la flèche ; et la capture réelle
+tournant vers 15 images par seconde (sondage toutes les ~65 ms), un
+clic de 50 à 80 ms passait entre deux sondages — un clic sur deux
+n'avait pas de halo. Le bit 0x0001 retient un clic même bref. Réserve :
+un autre processus qui interroge le même bouton peut consommer ce bit ;
+rare en pratique, et le bit 0x8000 reste en secours.
 - `CursorFilter(region_provider, halo=True, sonde=None)` :
   - `region_provider: Callable[[], Optional[dict]]` renvoie la région
     mss (`left`, `top`, `width`, `height`) de l'image en cours ; `None`
@@ -72,11 +82,11 @@ vignette reste au-dessus.
 ### Dessin du pointeur
 
 Vectoriel avec cv2, pas la bitmap Windows (indépendant du thème, net à
-toute résolution). Trois formes : flèche, barre de texte, main. Blanc,
+toute résolution). Deux formes : flèche, barre de texte. Blanc,
 contour noir 1 px, `LINE_AA`. Hauteur de base 19 px (flèche Windows à
 100 %), multipliée par `echelle = clamp(hauteur_image / 1080, 1, 2)`.
-Le point chaud (pointe de la flèche, milieu de la barre, index de la
-main) est placé sur la position lue.
+Le point chaud (pointe de la flèche, milieu de la barre) est placé sur
+la position lue.
 
 Le filtre travaille **avant** le `cv2.resize` de `_write_frame`, donc le
 pointeur suit la mise à l'échelle de la vidéo finale.
@@ -94,9 +104,9 @@ pointeur suit la mise à l'échelle de la vidéo finale.
   à l'expiration. Le halo continue jusqu'au bout même si le pointeur
   sort de l'image ou est masqué ensuite.
 - Le temps vient de `time.monotonic()` ; les tests le remplacent.
-- Limitation acceptée : la détection se fait par sondage à chaque image
-  (30 fois par seconde), un clic plus court qu'une image peut être
-  manqué.
+- Détection par sondage à chaque image capturée (≈ 15 à 30 par
+  seconde) ; le bit « pressé depuis le dernier appel » couvre les clics
+  plus courts qu'un sondage (voir la révision ci-dessus).
 
 ### `RecorderCore`
 
