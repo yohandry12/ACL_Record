@@ -425,3 +425,26 @@ def test_capture_audio_closes_stream_before_terminate_on_error(monkeypatch):
     assert p.stream.close_called is True
     assert p.terminated is True
     assert rec._audio_ready.is_set()  # la vidéo ne doit jamais rester bloquée
+
+
+def test_capture_region_reflete_la_zone_passee_a_grab(tmp_path):
+    """Le filtre curseur lit cette région pour convertir la position
+    écran du pointeur en position dans l'image."""
+    rec = RecorderCore(resolution="160x120", fps=60, audio_enabled=False)
+    rec.is_recording = True
+    rec._temp_dir = str(tmp_path)
+    ecran = EcranSimule()
+    _brancher_ecran(rec, ecran)
+    assert rec.capture_region is None
+
+    def arreter_apres_une_image():
+        while rec._frame_count < 1:
+            pass
+        rec.is_recording = False
+
+    t = threading.Thread(target=arreter_apres_une_image, daemon=True)
+    t.start()
+    rec._capture_screen()
+    t.join(timeout=5)
+
+    assert rec.capture_region == rec.monitor

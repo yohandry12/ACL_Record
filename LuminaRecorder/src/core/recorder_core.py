@@ -225,6 +225,11 @@ class RecorderCore:
         self.sct = mss.mss()
         self.monitor = self._get_monitor_from_resolution(resolution)
 
+        # Région réellement capturée pour l'image en cours (écran entier
+        # ou fenêtre suivie par Smart Focus). Lue par le filtre curseur,
+        # qui convertit la position écran du pointeur en position image.
+        self.capture_region: Optional[dict] = None
+
         # Smart Focus : suit la fenêtre active au lieu de l'écran entier.
         # Le verrouillage a lieu au démarrage (voir start_recording), pas
         # ici : la fenêtre au premier plan à la construction est celle de
@@ -555,6 +560,7 @@ class RecorderCore:
                     # Smart Focus actif : la zone suit la fenêtre verrouillée
                     region = (self._focus_tracker.current_region()
                               if self._focus_tracker else self.monitor)
+                    self.capture_region = region
                     screenshot = sct.grab(region)
                     # L'instant de l'image : celui où BitBlt vient de
                     # lire l'écran, pas celui où elle sera écrite
