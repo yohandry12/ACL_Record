@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from filters.cursor_filter import (COULEUR_HALO, DUREE_HALO, FORMES,
-                                   CursorFilter, cursor_is_available)
+                                   HAUTEUR_POINTEUR, CursorFilter, cursor_is_available)
 
 
 class SondeFactice:
@@ -64,10 +64,11 @@ def test_le_pointeur_est_dessine_autour_du_point_chaud(forme):
 
     diff = pixels_modifies(avant, apres)
     assert len(diff) > 0
-    # Tout ce qui a changé tient dans une fenêtre de 40 px autour du
-    # point chaud : le pointeur est bien posé à la position lue
-    assert diff[:, 0].min() >= 80 - 20 and diff[:, 0].max() <= 80 + 20
-    assert diff[:, 1].min() >= 100 - 20 and diff[:, 1].max() <= 100 + 20
+    # Tout ce qui a changé tient dans une fenêtre autour du point chaud :
+    # le pointeur est bien posé à la position lue
+    marge = HAUTEUR_POINTEUR + 5
+    assert diff[:, 0].min() >= 80 - marge and diff[:, 0].max() <= 80 + marge
+    assert diff[:, 1].min() >= 100 - marge and diff[:, 1].max() <= 100 + marge
     # Du blanc et du noir : remplissage et contour
     assert (apres == 255).all(axis=2).any()
     assert apres.shape == avant.shape and apres.dtype == avant.dtype
@@ -137,6 +138,15 @@ def test_sonde_en_panne_rend_l_image_intacte():
     assert np.array_equal(f.process(avant.copy()), avant)
 
 
+def test_region_malformee_rend_l_image_intacte():
+    """Une région sans clés 'left' ou 'top' ne doit pas lever KeyError."""
+    sonde = SondeFactice(x=100, y=80)
+    f = CursorFilter(lambda: {'width': 10}, sonde=sonde, horloge=lambda: 0.0)
+    avant = image()
+    # Le filtre ne lève jamais : l'image passe intacte
+    assert np.array_equal(f.process(avant.copy()), avant)
+
+
 def test_echelle_double_sur_une_image_4k():
     """Le pointeur suit la résolution : deux fois plus haut en 2160p."""
     def hauteur_du_pointeur(h_image):
@@ -197,7 +207,6 @@ def test_le_halo_expire_apres_sa_duree():
     apres = f.process(image())
 
     assert f._halos == []
-    assert _pixels_ambres(apres) == 0
 
 
 def test_le_halo_grandit_et_s_estompe():

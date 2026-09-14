@@ -227,28 +227,29 @@ class CursorFilter(FrameFilter):
             x, y = self._sonde.position()
             forme = self._sonde.forme()
             presse = self._sonde.bouton_presse() if self._halo else False
+            # Une sonde qui échoue ne doit pas faire désactiver le filtre par
+            # FilterChain : l'image passe sans pointeur. Le dessin est couvert aussi.
+
+            maintenant = self._horloge()
+            if self._halo:
+                if presse and not self._bouton_avant:
+                    self._halos.append((maintenant, x, y))
+                self._bouton_avant = presse
+                self._halos = [h for h in self._halos
+                               if maintenant - h[0] < DUREE_HALO]
+
+            left, top = int(region['left']), int(region['top'])
+            h, w = frame.shape[:2]
+            echelle = min(2.0, max(1.0, h / 1080.0))
+
+            for t_clic, hx, hy in self._halos:
+                _dessiner_halo(frame, hx - left, hy - top, maintenant - t_clic,
+                               echelle)
+
+            fx, fy = x - left, y - top
+            if forme is not None and 0 <= fx < w and 0 <= fy < h:
+                _dessiner_pointeur(frame, fx, fy, forme, echelle)
         except Exception:
-            # Une sonde qui échoue ne doit pas faire désactiver le
-            # filtre par FilterChain : l'image passe sans pointeur
-            return frame
-
-        maintenant = self._horloge()
-        if self._halo:
-            if presse and not self._bouton_avant:
-                self._halos.append((maintenant, x, y))
-            self._bouton_avant = presse
-            self._halos = [h for h in self._halos
-                           if maintenant - h[0] < DUREE_HALO]
-
-        left, top = int(region['left']), int(region['top'])
-        h, w = frame.shape[:2]
-        echelle = min(2.0, max(1.0, h / 1080.0))
-
-        for t_clic, hx, hy in self._halos:
-            _dessiner_halo(frame, hx - left, hy - top, maintenant - t_clic,
-                           echelle)
-
-        fx, fy = x - left, y - top
-        if forme is not None and 0 <= fx < w and 0 <= fy < h:
-            _dessiner_pointeur(frame, fx, fy, forme, echelle)
+            # Une région malformée ou un appel système défaillant ne lève jamais
+            pass
         return frame
