@@ -42,6 +42,7 @@ from core.system_analyzer import SystemAnalyzer
 from core.system_audio import system_audio_is_available
 from core.webcam_options import WebcamOptions
 from core.webcam_source import WebcamSource, lister_webcams
+from filters.cursor_filter import CursorFilter, cursor_is_available
 from postprocess.base import run_postprocessors
 from postprocess.subtitles_processor import whisper_is_available
 from services.ai_credentials import (providers_status, set_api_key,
@@ -368,6 +369,13 @@ class LuminaBridge:
                                                 fallback=False),
                 'available': smart_focus_is_available(),
             },
+            'cursor': {
+                'visible': self.config.get_bool('recording', 'cursor_visible',
+                                                fallback=True),
+                'halo': self.config.get_bool('recording', 'click_halo',
+                                             fallback=True),
+                'available': cursor_is_available(),
+            },
             'ai': {
                 'options': options,
                 'magic_cut_max': self.config.get('recording',
@@ -419,6 +427,8 @@ class LuminaBridge:
         'gain': ('recording', 'audio_gain'),
         'system_audio': ('recording', 'system_audio'),
         'smart_focus': ('recording', 'smart_focus'),
+        'cursor_visible': ('recording', 'cursor_visible'),
+        'click_halo': ('recording', 'click_halo'),
         'magic_cut_max': ('recording', 'magic_cut_max'),
         'delete_original': ('recording', 'delete_original'),
         'audio_device_index': ('recording', 'audio_device_index'),
@@ -596,6 +606,24 @@ class LuminaBridge:
         # l'interface tkinter
         return {'ok': False, 'busy': True}
 
+    def _construire_filtre_curseur(self):
+        """Le pointeur, si l'utilisateur le veut et si Windows le permet.
+
+        La région est lue à chaque image sur le moteur en cours : le
+        lambda est évalué au moment du traitement, quand `self.recorder`
+        existe. `getattr` couvre un moteur qui n'exposerait pas encore
+        la région : l'image passe alors sans pointeur.
+        """
+        if not cursor_is_available():
+            return None
+        if not self.config.get_bool('recording', 'cursor_visible',
+                                    fallback=True):
+            return None
+        halo = self.config.get_bool('recording', 'click_halo', fallback=True)
+        return CursorFilter(
+            lambda: getattr(self.recorder, 'capture_region', None),
+            halo=halo)
+
     def start_recording(self) -> dict:
         if self.state != IDLE:
             return {'ok': False, 'error': "Enregistrement déjà en cours"}
@@ -628,7 +656,8 @@ class LuminaBridge:
                 audio_device_index=self._selected_device_index(),
                 filters=AIOptions.build_filters(
                     options, plugins_actifs=self._plugins_actifs(),
-                    webcam_filter=webcam_filter),
+                    webcam_filter=webcam_filter,
+                    cursor_filter=self._construire_filtre_curseur()),
                 on_filter_disabled=lambda n: self.emit(
                     'notice', f"Filtre « {n} » désactivé (trop lent)"),
                 on_capture_error=lambda m: self.emit('error', m),

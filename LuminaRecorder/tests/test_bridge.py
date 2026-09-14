@@ -1009,6 +1009,80 @@ def test_la_webcam_est_liberee_si_la_preparation_echoue(bridge, monkeypatch):
     assert bridge._webcam is None
 
 
+# --- curseur -----------------------------------------------------------
+
+def test_etat_initial_du_curseur(bridge, monkeypatch):
+    monkeypatch.setattr(bridge_module, 'cursor_is_available', lambda: True)
+    etat = bridge.get_initial_state()['cursor']
+    # Défauts « on » : le pointeur est un correctif, le halo est discret
+    assert etat == {'visible': True, 'halo': True, 'available': True}
+
+
+def test_les_cles_du_curseur_sont_persistees(bridge):
+    assert bridge.set_option('cursor_visible', False) == {'ok': True}
+    assert bridge.set_option('click_halo', False) == {'ok': True}
+    assert ('recording', 'cursor_visible', False) in bridge.config.saved
+    assert ('recording', 'click_halo', False) in bridge.config.saved
+
+
+def _filtres_du_lancement(bridge):
+    assert bridge.start_recording()['ok']
+    return bridge.recorder.kwargs['filters']
+
+
+def test_le_filtre_curseur_est_construit_quand_visible(bridge, monkeypatch):
+    from filters.cursor_filter import CursorFilter
+    monkeypatch.setattr(bridge_module, 'cursor_is_available', lambda: True)
+    # La sonde réelle ne doit pas être construite dans les tests
+    monkeypatch.setattr(bridge_module, 'CursorFilter',
+                        lambda provider, halo: CursorFilter(
+                            provider, halo=halo, sonde=object()))
+    bridge.config.set('recording', 'click_halo', False)
+
+    filtres = _filtres_du_lancement(bridge)
+
+    curseurs = [f for f in filtres if isinstance(f, CursorFilter)]
+    assert len(curseurs) == 1
+    assert curseurs[0]._halo is False
+    # La région vient du moteur en cours ; le faux moteur n'en a pas
+    assert curseurs[0]._region() is None
+
+
+def test_le_filtre_curseur_lit_la_region_du_moteur(bridge, monkeypatch):
+    from filters.cursor_filter import CursorFilter
+    monkeypatch.setattr(bridge_module, 'cursor_is_available', lambda: True)
+    monkeypatch.setattr(bridge_module, 'CursorFilter',
+                        lambda provider, halo: CursorFilter(
+                            provider, halo=halo, sonde=object()))
+
+    filtres = _filtres_du_lancement(bridge)
+    bridge.recorder.capture_region = {'left': 5, 'top': 6,
+                                      'width': 10, 'height': 10}
+
+    curseur = next(f for f in filtres if isinstance(f, CursorFilter))
+    assert curseur._region() == {'left': 5, 'top': 6,
+                                 'width': 10, 'height': 10}
+
+
+def test_pas_de_filtre_curseur_quand_desactive(bridge, monkeypatch):
+    from filters.cursor_filter import CursorFilter
+    monkeypatch.setattr(bridge_module, 'cursor_is_available', lambda: True)
+    bridge.config.set('recording', 'cursor_visible', False)
+
+    filtres = _filtres_du_lancement(bridge)
+
+    assert not any(isinstance(f, CursorFilter) for f in filtres)
+
+
+def test_pas_de_filtre_curseur_hors_windows(bridge, monkeypatch):
+    from filters.cursor_filter import CursorFilter
+    monkeypatch.setattr(bridge_module, 'cursor_is_available', lambda: False)
+
+    filtres = _filtres_du_lancement(bridge)
+
+    assert not any(isinstance(f, CursorFilter) for f in filtres)
+
+
 def test_la_webcam_est_liberee_a_la_fermeture(bridge, monkeypatch):
     activer_webcam(bridge)
     demarrer_sans_attendre(bridge, monkeypatch)
