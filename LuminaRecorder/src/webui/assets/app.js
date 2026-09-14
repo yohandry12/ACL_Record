@@ -740,6 +740,14 @@ function populateSettings(s) {
   $('folder').textContent = s.save_directory; $('folder').title = s.save_directory;
   $('smart-focus').checked = s.smart_focus.enabled;
   if (!s.smart_focus.available) { $('smart-focus').disabled = true; $('smart-focus-hint').textContent = 'Nécessite pywin32'; }
+  $('cursor-visible').checked = s.cursor.visible;
+  $('click-halo').checked = s.cursor.halo;
+  if (!s.cursor.available) {
+    $('cursor-visible').disabled = true;
+    $('click-halo').disabled = true;
+    $('cursor-hint').textContent = 'Windows uniquement';
+  }
+  majHalo();
 
   $('mic').checked = s.audio.mic_enabled;
   $('gain').value = s.audio.gain; majGain();
@@ -791,6 +799,16 @@ function populateSettings(s) {
   // afficher la nouvelle valeur.
   rafraichirToutesLesListes();
   majTousLesFondus();          // la hauteur du contenu a pu changer
+}
+
+/* Le halo n'a d'objet que si le pointeur est dessiné : sans pointeur,
+ * l'interrupteur du halo est grisé mais garde sa valeur. */
+function majHalo() {
+  const curseur = $('cursor-visible');
+  const halo = $('click-halo');
+  const actif = curseur.checked && !curseur.disabled;
+  halo.disabled = !actif;
+  halo.closest('.ligne').classList.toggle('disabled', !actif);
 }
 
 /* Interrupteur de la feuille : persiste et reflète sur la pastille */
@@ -884,6 +902,9 @@ function wireSettings() {
     if (r && r.ok) { $('folder').textContent = r.path; $('folder').title = r.path; }
   });
   bindInter('smart-focus', 'smart_focus', 'smart-focus-btn');
+  bindInter('cursor-visible', 'cursor_visible', null);
+  bindInter('click-halo', 'click_halo', null);
+  $('cursor-visible').addEventListener('change', majHalo);
   bindInter('mic', 'mic_enabled', 'pill-mic');
   bindInter('system-audio', 'system_audio', 'pill-system');
   bindInter('webcam-enabled', 'webcam_enabled', 'pill-webcam');

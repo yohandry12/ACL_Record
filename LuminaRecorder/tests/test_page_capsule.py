@@ -28,6 +28,7 @@ IDS_ATTENDUS = [
     'tab-capture', 'tab-audio', 'tab-webcam', 'tab-ia', 'version-tag',
     # réglages
     'resolution', 'bitrate', 'folder', 'smart-focus', 'mic', 'device',
+    'cursor-visible', 'click-halo', 'cursor-hint',
     'system-audio', 'gain', 'gain-value',
     'webcam-enabled', 'webcam-device', 'webcam-forme', 'webcam-coin',
     'webcam-taille', 'webcam-miroir', 'webcam-test', 'webcam-preview',
